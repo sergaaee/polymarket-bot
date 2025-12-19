@@ -64,10 +64,10 @@ async fn main() -> anyhow::Result<()> {
         println!("win count: {}, loss count: {} | {}", win_count, loss_count, Asset::SOL);
 
         // skip if we already completed this timestamp
-        // if completed_timestamps.contains(&timestamp) {
-        //     println!("Already completed timestamp: {}", timestamp);
-        //     continue;
-        // }
+        if completed_timestamps.contains(&timestamp) {
+            println!("Already completed timestamp: {}", timestamp);
+            continue;
+        }
         'open_position: loop {
             match open_start_positions(
                 &client,
