@@ -120,14 +120,14 @@ async fn main() -> anyhow::Result<()> {
                                     );
                                     client.cancel_order(&hedge_order.order_id.as_str()).await?;
                                     println!("Hedge order canceled");
-                                    close_order_by_market(
+                                    let closed_order = close_order_by_market(
                                         &client,
                                         &signer,
                                         tokens.first_asset_id,
                                         order_size,
                                     )
                                         .await?;
-                                    println!("Initial position closed");
+                                    println!("Initial position closed: {:?}", closed_order);
                                     break 'hedge_order_loop;
                                 }
                             }
@@ -172,14 +172,14 @@ async fn main() -> anyhow::Result<()> {
                                     );
                                     client.cancel_order(&hedge_order.order_id.as_str()).await?;
                                     println!("Hedge order canceled");
-                                    close_order_by_market(
+                                    let closed_order = close_order_by_market(
                                         &client,
                                         &signer,
                                         tokens.second_asset_id,
                                         order_size,
                                     )
                                         .await?;
-                                    println!("Initial position closed");
+                                    println!("Initial position closed: {:?}", closed_order);
                                     break 'hedge_order_loop;
                                 }
                             }
