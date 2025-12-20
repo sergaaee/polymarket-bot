@@ -111,12 +111,9 @@ async fn main() -> anyhow::Result<()> {
                                     break 'hedge_order_loop;
                                 }
                                 sleep(Duration::from_secs(1)).await;
-                                let current_first_position: PriceResponse =
-                                    get_asset_price(&client, tokens.first_asset_id.as_str())
-                                        .await?;
-                                if current_first_position.price <= max_loss
-                                    && hedge_order_status.status != "MATCHED"
-                                    && allow_stop_loss(timestamp, 30)
+
+                                if hedge_order_status.status != "MATCHED"
+                                    && allow_stop_loss(timestamp, 20)
                                 {
                                     println!(
                                         "Stop loss reached, cancelling hedge order and closing position..."
@@ -168,9 +165,8 @@ async fn main() -> anyhow::Result<()> {
                                 let current_first_position: PriceResponse =
                                     get_asset_price(&client, tokens.second_asset_id.as_str())
                                         .await?;
-                                if current_first_position.price <= max_loss
-                                    && hedge_order_status.status != "MATCHED"
-                                    && allow_stop_loss(timestamp, 30)
+                                if hedge_order_status.status != "MATCHED"
+                                    && allow_stop_loss(timestamp, 20)
                                 {
                                     println!(
                                         "Stop loss reached, cancelling hedge order and closing position..."
