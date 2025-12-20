@@ -63,7 +63,7 @@ pub fn nearest_quarter_hour() -> i64 {
             .unwrap()
     };
 
-    quarter.timestamp()
+    (quarter + Duration::from_mins(30)).timestamp()
 }
 
 pub async fn get_tokens(
