@@ -46,7 +46,7 @@ pub fn floor_dp(value: Decimal, dp: u32) -> Decimal {
 }
 
 pub async fn get_order_with_retry(
-    client: &Client<Authenticated<Normal>>,
+    client: &Arc<Client<Authenticated<Normal>>>,
     order_id: &str,
     max_retries: usize,
 ) -> polymarket_client_sdk::Result<OpenOrderResponse> {
@@ -134,7 +134,7 @@ pub async fn manage_position_after_match(
 
     loop {
         let hedge_order_status: OpenOrderResponse =
-            client.order(&hedge_order.order_id.as_str()).await?;
+            get_order_with_retry(client, hedge_order.order_id.as_str(), 10).await?;
         println!("Hedge order status: {:?}", hedge_order_status.status);
         if hedge_order_status.status == "MATCHED" {
             println!("Hedge order matched");
