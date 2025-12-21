@@ -105,10 +105,6 @@ async fn main() -> anyhow::Result<()> {
                             let has_open_position_first =
                                 !first_order_status.size_matched.is_zero();
                             let mut matched_size = floor_dp(first_order_status.size_matched, 2);
-                            if matched_size.is_zero() {
-                                println!("Retrieved bad data from polymarket about size: {}", &matched_size);
-                                matched_size = order_size;
-                            }
                             if has_open_position_first {
                                 let hedge_config = HedgeConfig {
                                     second_order_id: second_order.order_id.clone(),
@@ -126,6 +122,9 @@ async fn main() -> anyhow::Result<()> {
                                 prevent_holding_position(&client, &signer, prevent_holding_config)
                                     .await?;
                                 break 'open_position;
+                            } else {
+                                println!("No open position, going to cancel it");
+                                client.cancel_order(first_order_id.as_str()).await?;
                             }
                         }
                         let second_order_status: OpenOrderResponse =
@@ -136,7 +135,10 @@ async fn main() -> anyhow::Result<()> {
                                 !second_order_status.size_matched.is_zero();
                             let mut matched_size = floor_dp(second_order_status.size_matched, 2);
                             if matched_size.is_zero() {
-                                println!("Retrieved bad data from polymarket about size: {}", &matched_size);
+                                println!(
+                                    "Retrieved bad data from polymarket about size: {}",
+                                    &matched_size
+                                );
                                 matched_size = order_size;
                             }
 
@@ -157,17 +159,24 @@ async fn main() -> anyhow::Result<()> {
                                 prevent_holding_position(&client, &signer, prevent_holding_config)
                                     .await?;
                                 break 'open_position;
+                            } else {
+                                println!("No open position, going to cancel it");
+                                client.cancel_order(second_order.order_id.as_str()).await?;
                             }
                         }
 
                         if first_order_status.status == "MATCHED" {
                             println!("First order matched: {:?}", first_order_status);
+                            client.cancel_order(&second_order.order_id).await?;
                             let mut close_size = floor_dp(first_order_status.size_matched, 2);
                             if close_size == Decimal::zero() {
+                                println!(
+                                    "Retrieved bad data from polymarket about size: {}",
+                                    close_size
+                                );
                                 close_size = order_size;
                             }
                             println!("Close size will be = {}", close_size);
-                            client.cancel_order(&second_order.order_id).await?;
                             println!("Second order canceled, opening hedge order,,,");
                             let hedge_config = HedgeConfig {
                                 second_order_id: second_order.order_id,
@@ -193,6 +202,10 @@ async fn main() -> anyhow::Result<()> {
                             println!("Second order matched: {:?}", second_order_status);
                             let mut close_size = floor_dp(second_order_status.size_matched, 2);
                             if close_size == Decimal::zero() {
+                                println!(
+                                    "Retrieved bad data from polymarket about size: {}",
+                                    close_size
+                                );
                                 close_size = order_size;
                             }
                             println!("Close size will be = {}", close_size);

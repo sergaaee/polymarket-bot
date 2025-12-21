@@ -87,7 +87,14 @@ pub async fn prevent_holding_position(
     let first_order_status: OpenOrderResponse = client
         .order(&prevent_holding_config.order_id.as_str())
         .await?;
-    let first_order_size = floor_dp(first_order_status.size_matched, 2);
+    let mut first_order_size = floor_dp(first_order_status.size_matched, 2);
+    if first_order_size.is_zero() {
+        println!(
+            "Retrieved bad data from polymarket about size: {}",
+            &first_order_size
+        );
+        first_order_size = prevent_holding_config.hedge_config.hedge_size;
+    };
     println!(
         "Time's up to wait for first order opening, going to open hedge with size = {}",
         &first_order_size
@@ -112,43 +119,27 @@ pub async fn manage_position_after_match(
     hedge_config: HedgeConfig,
 ) -> polymarket_client_sdk::Result<i8> {
     let second_order_status: OpenOrderResponse =
-        get_order_with_retry(client, hedge_config.second_order_id.as_str(), 10).await?;
+        get_order_with_retry(client, hedge_config.second_order_id.as_str(), 30).await?;
+    let mut hedge_size = hedge_config.hedge_size;
     if second_order_status.size_matched > Decimal::zero() {
-        println!("Second order partially matched, closing it...");
-        let closing_second_size = floor_dp(second_order_status.size_matched, 2);
-        let closed_order: PostOrderResponse;
-        loop {
-            let response = close_order_by_market(
-                &client,
-                &signer,
-                &hedge_config.hedge_asset_id,
-                closing_second_size,
-            )
-            .await?;
-
-            match response.error_msg.as_deref() {
-                Some("") | None => {
-                    // успех
-                    closed_order = response;
-                    println!(
-                        "Second order after partially filling closed: {:?}",
-                        closed_order
-                    );
-                    break;
-                }
-                Some(err) => {
-                    println!("close order failed: {}", err);
-                    continue;
-                }
-            }
+        if second_order_status.status != "CANCELED" {
+            client
+                .cancel_order(hedge_config.second_order_id.as_str())
+                .await?;
         }
+        let closing_second_size = floor_dp(second_order_status.size_matched, 2);
+        println!(
+            "Second order partially matched with size: {}",
+            &closing_second_size
+        );
+        hedge_size = hedge_config.hedge_size - closing_second_size;
     }
 
     let hedge_order: OrderResponse = place_hedge_order(
         &client,
         &signer,
         hedge_config.hedge_asset_id.clone(),
-        hedge_config.hedge_size,
+        hedge_size,
         hedge_config.hedge_enter_price,
     )
     .await?;
@@ -172,7 +163,14 @@ pub async fn manage_position_after_match(
                 get_order_with_retry(client, hedge_order.order_id.as_str(), 10).await?;
             if hedge_order_status.size_matched > Decimal::zero() {
                 println!("Hedge order partially matched, closing it...");
-                let closing_hedge_size = floor_dp(hedge_order_status.size_matched, 2);
+                let mut closing_hedge_size = floor_dp(hedge_order_status.size_matched, 2);
+                if closing_hedge_size == Decimal::zero() {
+                    println!(
+                        "Retrieved bad data from polymarket about size: {}",
+                        closing_hedge_size
+                    );
+                    closing_hedge_size = hedge_size;
+                }
                 let closed_order: PostOrderResponse;
                 loop {
                     let response = close_order_by_market(
