@@ -95,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
                         println!("First order status: {:?}", first_order_status.status);
                         if first_order_status.status == "MATCHED" {
                             println!("First order matched");
+                            let close_size = first_order_status.size_matched;
                             client.cancel_order(&second_order.order_id).await?;
                             println!("Second order canceled, opening hedge order,,,");
                             let hedge_order: OrderResponse = place_hedge_order(
@@ -133,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
                                             &client,
                                             &signer,
                                             &tokens.first_asset_id,
-                                            order_size,
+                                            close_size,
                                         )
                                         .await?;
 
@@ -163,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
                         println!("Second order status: {:?}", second_order_status.status);
                         if second_order_status.status == "MATCHED" {
                             println!("Second order matched");
+                            let close_size = second_order_status.size_matched;
                             client.cancel_order(&first_order.order_id).await?;
                             println!("First order canceled, opening hedge order,,,");
                             let hedge_order: OrderResponse = place_hedge_order(
@@ -200,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
                                             &client,
                                             &signer,
                                             &tokens.second_asset_id,
-                                            order_size,
+                                            close_size,
                                         )
                                         .await?;
 

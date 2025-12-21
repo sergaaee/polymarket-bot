@@ -111,6 +111,7 @@ pub async fn close_order_by_market(
         .token_id(token_id)
         .amount(Amount::shares(amount)?)
         .side(Side::Sell)
+        .order_type(OrderType::FOK)
         .build()
         .await?;
     let signed_order = client.sign(signer, market_order).await?;
