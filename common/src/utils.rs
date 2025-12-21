@@ -143,12 +143,12 @@ pub async fn manage_position_after_match(
         hedge_config.hedge_enter_price,
     )
     .await?;
-    println!("Hedge order placed");
+    println!("Hedge order placed: {:?}", hedge_order);
     sleep(Duration::from_secs(10)).await;
 
     loop {
         let hedge_order_status: OpenOrderResponse =
-            get_order_with_retry(client, hedge_order.order_id.as_str(), 10).await?;
+            get_order_with_retry(client, hedge_order.order_id.as_str(), 20).await?;
         println!("Hedge order status: {:?}", hedge_order_status.status);
         if hedge_order_status.status == "MATCHED" {
             println!("Hedge order matched");
