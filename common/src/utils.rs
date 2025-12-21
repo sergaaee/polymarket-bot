@@ -88,31 +88,19 @@ pub async fn prevent_holding_position(
         .await?;
     let first_order_size = floor_dp(first_order_status.size_matched, 2);
     println!(
-        "Time's up to wait for first order opening, going to close it with size = {}",
+        "Time's up to wait for first order opening, going to open hedge with size = {}",
         &first_order_size
     );
-    let closed_order: PostOrderResponse;
+    let true_hedge_config = HedgeConfig {
+        hedge_asset_id: prevent_holding_config.hedge_config.hedge_asset_id,
+        initial_asset_id: prevent_holding_config.hedge_config.initial_asset_id,
+        hedge_size: first_order_size,
+        hedge_enter_price: prevent_holding_config.hedge_config.hedge_enter_price,
+        close_size: first_order_size,
+        timestamp: prevent_holding_config.hedge_config.timestamp,
+    };
     loop {
-        let response = close_order_by_market(
-            &client,
-            &signer,
-            &prevent_holding_config.asset_id,
-            first_order_size,
-        )
-        .await?;
-
-        match response.error_msg.as_deref() {
-            Some("") | None => {
-                // успех
-                closed_order = response;
-                println!("Initial position closed: {:?}", closed_order);
-                return Ok(());
-            }
-            Some(err) => {
-                println!("close order failed: {}", err);
-                continue;
-            }
-        }
+        manage_position_after_match(client, signer, true_hedge_config.clone()).await?;
     }
 }
 
@@ -125,7 +113,7 @@ pub async fn manage_position_after_match(
         &client,
         &signer,
         hedge_config.hedge_asset_id,
-        hedge_config.order_size,
+        hedge_config.hedge_size,
         hedge_config.hedge_enter_price,
     )
     .await?;

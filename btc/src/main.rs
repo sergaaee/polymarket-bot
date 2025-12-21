@@ -103,10 +103,19 @@ async fn main() -> anyhow::Result<()> {
                         if !is_trade_allowed && first_order_status.status == "LIVE" {
                             let has_open_position_first =
                                 !first_order_status.size_matched.is_zero();
+                            let matched_size = floor_dp(first_order_status.size_matched, 2);
                             if has_open_position_first {
+                                let hedge_config = HedgeConfig {
+                                    hedge_asset_id: tokens.second_asset_id.clone(),
+                                    initial_asset_id: tokens.first_asset_id.clone(),
+                                    hedge_size: matched_size,
+                                    hedge_enter_price,
+                                    close_size: matched_size,
+                                    timestamp,
+                                };
                                 let prevent_holding_config = PreventHoldingConfig {
-                                    asset_id: tokens.first_asset_id.clone(),
-                                    order_id: first_order.order_id.clone(),
+                                    hedge_config,
+                                    order_id: second_order.order_id.clone(),
                                 };
                                 prevent_holding_position(&client, &signer, prevent_holding_config)
                                     .await?;
@@ -118,9 +127,19 @@ async fn main() -> anyhow::Result<()> {
                         if !allow_trade(timestamp, 30) && second_order_status.status == "LIVE" {
                             let has_open_position_second =
                                 !second_order_status.size_matched.is_zero();
+                            let matched_size = floor_dp(second_order_status.size_matched, 2);
+
                             if has_open_position_second {
+                                let hedge_config = HedgeConfig {
+                                    hedge_asset_id: tokens.first_asset_id.clone(),
+                                    initial_asset_id: tokens.second_asset_id.clone(),
+                                    hedge_size: matched_size,
+                                    hedge_enter_price,
+                                    close_size: matched_size,
+                                    timestamp,
+                                };
                                 let prevent_holding_config = PreventHoldingConfig {
-                                    asset_id: tokens.second_asset_id.clone(),
+                                    hedge_config,
                                     order_id: second_order.order_id.clone(),
                                 };
                                 prevent_holding_position(&client, &signer, prevent_holding_config)
@@ -140,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
                             let hedge_config = HedgeConfig {
                                 hedge_asset_id: tokens.second_asset_id,
                                 initial_asset_id: tokens.first_asset_id,
-                                order_size,
+                                hedge_size: order_size,
                                 hedge_enter_price,
                                 close_size,
                                 timestamp,
@@ -167,7 +186,7 @@ async fn main() -> anyhow::Result<()> {
                             let hedge_config = HedgeConfig {
                                 hedge_asset_id: tokens.first_asset_id,
                                 initial_asset_id: tokens.second_asset_id,
-                                order_size,
+                                hedge_size: order_size,
                                 hedge_enter_price,
                                 close_size,
                                 timestamp,
