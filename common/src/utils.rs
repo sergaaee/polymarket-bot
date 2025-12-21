@@ -103,7 +103,7 @@ pub async fn get_tokens(
 pub async fn close_order_by_market(
     client: &Arc<Client<Authenticated<Normal>>>,
     signer: &LocalSigner<SigningKey>,
-    token_id: String,
+    token_id: &String,
     amount: Decimal,
 ) -> polymarket_client_sdk::Result<PostOrderResponse> {
     let market_order = client

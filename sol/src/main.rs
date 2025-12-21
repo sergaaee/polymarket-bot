@@ -4,7 +4,9 @@ use alloy_primitives::Address;
 
 use common::*;
 use polymarket_client_sdk::clob::{Client, Config};
-use polymarket_client_sdk::types::{OpenOrderResponse, PriceResponse, SignatureType};
+use polymarket_client_sdk::types::{
+    OpenOrderResponse, PostOrderResponse, PriceResponse, SignatureType,
+};
 use polymarket_client_sdk::{POLYGON, PRIVATE_KEY_VAR};
 use reqwest::Client as http_client;
 use rust_decimal::Decimal;
@@ -55,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         let timestamp = nearest_quarter_hour();
-        if !allow_trade(timestamp, 60) {
+        if !allow_trade(timestamp, 90) {
             println!("Not time to trade already");
             continue;
         }
@@ -80,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
                 limit_enter_price,
                 tokens.clone(),
             )
-            .await
+                .await
             {
                 Ok(Some(orders)) => {
                     println!("Opened positions: {:?}", orders);
@@ -102,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
                                 order_size,
                                 hedge_enter_price,
                             )
-                            .await?;
+                                .await?;
                             println!("Hedge order placed");
                             sleep(Duration::from_secs(10)).await;
                             'hedge_order_loop: loop {
@@ -124,13 +126,30 @@ async fn main() -> anyhow::Result<()> {
                                     );
                                     client.cancel_order(&hedge_order.order_id.as_str()).await?;
                                     println!("Hedge order canceled");
-                                    let closed_order = close_order_by_market(
-                                        &client,
-                                        &signer,
-                                        tokens.first_asset_id,
-                                        order_size,
-                                    )
-                                    .await?;
+
+                                    let closed_order: PostOrderResponse;
+                                    loop {
+                                        let response = close_order_by_market(
+                                            &client,
+                                            &signer,
+                                            &tokens.first_asset_id,
+                                            order_size,
+                                        )
+                                            .await?;
+
+                                        match response.error_msg.as_deref() {
+                                            Some("") | None => {
+                                                // успех
+                                                closed_order = response;
+                                                break;
+                                            }
+                                            Some(err) => {
+                                                println!("close order failed: {}", err);
+                                                continue;
+                                            }
+                                        }
+                                    }
+
                                     println!("Initial position closed: {:?}", closed_order);
                                     loss_count += 1;
                                     break 'hedge_order_loop;
@@ -153,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
                                 order_size,
                                 hedge_enter_price,
                             )
-                            .await?;
+                                .await?;
                             println!("Hedge order placed");
                             sleep(Duration::from_secs(10)).await;
                             'hedge_order_loop: loop {
@@ -166,9 +185,6 @@ async fn main() -> anyhow::Result<()> {
                                     break 'hedge_order_loop;
                                 }
                                 sleep(Duration::from_secs(1)).await;
-                                let current_first_position: PriceResponse =
-                                    get_asset_price(&client, tokens.second_asset_id.as_str())
-                                        .await?;
                                 if hedge_order_status.status != "MATCHED"
                                     && allow_stop_loss(timestamp, 20)
                                 {
@@ -177,13 +193,30 @@ async fn main() -> anyhow::Result<()> {
                                     );
                                     client.cancel_order(&hedge_order.order_id.as_str()).await?;
                                     println!("Hedge order canceled");
-                                    let closed_order = close_order_by_market(
-                                        &client,
-                                        &signer,
-                                        tokens.second_asset_id,
-                                        order_size,
-                                    )
-                                    .await?;
+
+                                    let closed_order: PostOrderResponse;
+                                    loop {
+                                        let response = close_order_by_market(
+                                            &client,
+                                            &signer,
+                                            &tokens.second_asset_id,
+                                            order_size,
+                                        )
+                                            .await?;
+
+                                        match response.error_msg.as_deref() {
+                                            Some("") | None => {
+                                                // успех
+                                                closed_order = response;
+                                                break;
+                                            }
+                                            Some(err) => {
+                                                println!("close order failed: {}", err);
+                                                continue;
+                                            }
+                                        }
+                                    }
+
                                     println!("Initial position closed: {:?}", closed_order);
                                     loss_count += 1;
                                     break 'hedge_order_loop;
