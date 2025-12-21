@@ -104,7 +104,11 @@ async fn main() -> anyhow::Result<()> {
                         if !is_trade_allowed && first_order_status.status == "LIVE" {
                             let has_open_position_first =
                                 !first_order_status.size_matched.is_zero();
-                            let matched_size = floor_dp(first_order_status.size_matched, 2);
+                            let mut matched_size = floor_dp(first_order_status.size_matched, 2);
+                            if matched_size.is_zero() {
+                                println!("Retrieved bad data from polymarket about size: {}", &matched_size);
+                                matched_size = order_size;
+                            }
                             if has_open_position_first {
                                 let hedge_config = HedgeConfig {
                                     second_order_id: second_order.order_id.clone(),
@@ -130,7 +134,11 @@ async fn main() -> anyhow::Result<()> {
                         if !allow_trade(timestamp, 30) && second_order_status.status == "LIVE" {
                             let has_open_position_second =
                                 !second_order_status.size_matched.is_zero();
-                            let matched_size = floor_dp(second_order_status.size_matched, 2);
+                            let mut matched_size = floor_dp(second_order_status.size_matched, 2);
+                            if matched_size.is_zero() {
+                                println!("Retrieved bad data from polymarket about size: {}", &matched_size);
+                                matched_size = order_size;
+                            }
 
                             if has_open_position_second {
                                 let hedge_config = HedgeConfig {
