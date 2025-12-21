@@ -93,8 +93,12 @@ async fn main() -> anyhow::Result<()> {
                     loop {
                         let first_order_status: OpenOrderResponse =
                             client.order(&first_order.order_id.as_str()).await?;
-                        println!("First order status: {:?}", first_order_status.status);
-                        if !allow_trade(timestamp, 30)
+                        let is_trade_allowed = allow_trade(timestamp, 30);
+                        println!(
+                            "Trade still allowed : {:?}, first order status: {:?}",
+                            is_trade_allowed, first_order_status.status
+                        );
+                        if !is_trade_allowed
                             && first_order_status.status != "MATCHED"
                             && first_order_status.status != "CANCELED"
                         {
