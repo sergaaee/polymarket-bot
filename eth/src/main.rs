@@ -92,8 +92,9 @@ async fn main() -> anyhow::Result<()> {
                     let second_order: OrderResponse = orders[1].clone();
                     sleep(Duration::from_secs(10)).await;
                     loop {
-                        let first_order_status: OpenOrderResponse =
-                            client.order(&first_order.order_id.as_str()).await?;
+                        let first_order_status =
+                            get_order_with_retry(&client, &first_order.order_id, 10).await?;
+
                         let is_trade_allowed = allow_trade(timestamp, 30);
                         println!(
                             "Trade still allowed : {:?}, first order status: {:?}",
@@ -112,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
                             }
                         }
                         let second_order_status: OpenOrderResponse =
-                            client.order(&second_order.order_id.as_str()).await?;
+                            get_order_with_retry(&client, &second_order.order_id, 10).await?;
                         println!("Second order status: {:?}", second_order_status.status);
                         if !allow_trade(timestamp, 30) && second_order_status.status == "LIVE" {
                             let has_open_position_second =

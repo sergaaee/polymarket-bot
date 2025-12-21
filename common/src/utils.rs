@@ -45,6 +45,35 @@ pub fn floor_dp(value: Decimal, dp: u32) -> Decimal {
     value.round_dp_with_strategy(dp, RoundingStrategy::ToZero)
 }
 
+pub async fn get_order_with_retry(
+    client: &Client<Authenticated<Normal>>,
+    order_id: &str,
+    max_retries: usize,
+) -> polymarket_client_sdk::Result<OpenOrderResponse> {
+    let mut attempt = 0;
+
+    loop {
+        match client.order(order_id).await {
+            Ok(status) => return Ok(status),
+
+            Err(err) => {
+                attempt += 1;
+
+                if attempt >= max_retries {
+                    return Err(err);
+                }
+
+                println!(
+                    "get_order failed (attempt {}/{}): {}",
+                    attempt, max_retries, err
+                );
+
+                sleep(Duration::from_millis(1000)).await;
+            }
+        }
+    }
+}
+
 pub async fn prevent_holding_position(
     client: &Arc<Client<Authenticated<Normal>>>,
     signer: &LocalSigner<SigningKey>,
