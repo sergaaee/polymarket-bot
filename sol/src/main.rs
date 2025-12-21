@@ -99,9 +99,7 @@ async fn main() -> anyhow::Result<()> {
                             "Trade still allowed : {:?}, first order status: {:?}",
                             is_trade_allowed, first_order_status.status
                         );
-                        if !is_trade_allowed
-                            && first_order_status.status == "LIVE"
-                        {
+                        if !is_trade_allowed && first_order_status.status == "LIVE" {
                             let has_open_position_first =
                                 !first_order_status.size_matched.is_zero();
                             if has_open_position_first {
@@ -109,9 +107,10 @@ async fn main() -> anyhow::Result<()> {
                                 println!("Cancelled first order, closing now");
                                 let first_order_status: OpenOrderResponse =
                                     client.order(&first_order.order_id.as_str()).await?;
+                                let first_order_size = floor_dp(first_order_status.size_matched, 2);
                                 println!(
                                     "Time's up to wait for first order opening, going to close it with size = {}",
-                                    first_order_status.size_matched
+                                    &first_order_size
                                 );
                                 let closed_order: PostOrderResponse;
                                 loop {
@@ -119,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
                                         &client,
                                         &signer,
                                         &tokens.first_asset_id,
-                                        first_order_status.size_matched,
+                                        first_order_size,
                                     )
                                         .await?;
 
@@ -141,9 +140,7 @@ async fn main() -> anyhow::Result<()> {
                         let second_order_status: OpenOrderResponse =
                             client.order(&second_order.order_id.as_str()).await?;
                         println!("Second order status: {:?}", second_order_status.status);
-                        if !allow_trade(timestamp, 30)
-                            && second_order_status.status == "LIVE"
-                        {
+                        if !allow_trade(timestamp, 30) && second_order_status.status == "LIVE" {
                             let has_open_position_second =
                                 !second_order_status.size_matched.is_zero();
                             if has_open_position_second {
@@ -151,9 +148,10 @@ async fn main() -> anyhow::Result<()> {
                                 println!("Cancelled first order, closing now");
                                 let second_order_status: OpenOrderResponse =
                                     client.order(&second_order.order_id.as_str()).await?;
+                                let second_order_size = floor_dp(second_order_status.size_matched, 2);
                                 println!(
                                     "Time's up to wait for second order opening, going to close it with size = {}",
-                                    second_order_status.size_matched
+                                    &second_order_size
                                 );
                                 let closed_order: PostOrderResponse;
                                 loop {
@@ -161,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
                                         &client,
                                         &signer,
                                         &tokens.second_asset_id,
-                                        second_order_status.size_matched,
+                                        second_order_size
                                     )
                                         .await?;
 
@@ -183,7 +181,7 @@ async fn main() -> anyhow::Result<()> {
 
                         if first_order_status.status == "MATCHED" {
                             println!("First order matched");
-                            let close_size = first_order_status.size_matched;
+                            let close_size = floor_dp(first_order_status.size_matched, 2);
                             println!("Close size will be = {}", close_size);
                             client.cancel_order(&second_order.order_id).await?;
                             println!("Second order canceled, opening hedge order,,,");
@@ -250,7 +248,7 @@ async fn main() -> anyhow::Result<()> {
 
                         if second_order_status.status == "MATCHED" {
                             println!("Second order matched");
-                            let close_size = second_order_status.size_matched;
+                            let close_size = floor_dp(second_order_status.size_matched, 2);
                             println!("Close size will be = {}", close_size);
                             client.cancel_order(&first_order.order_id).await?;
                             println!("First order canceled, opening hedge order,,,");

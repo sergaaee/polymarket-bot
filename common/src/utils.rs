@@ -11,7 +11,7 @@ use polymarket_client_sdk::types::{
     Amount, OrderType, PostOrderResponse, PriceRequestBuilder, PriceResponse, Side,
 };
 use reqwest::Client as http_client;
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, RoundingStrategy};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -38,6 +38,10 @@ pub fn allow_stop_loss(market_timestamp: i64, grace_seconds: i64) -> bool {
 
     // разрешаем стоп только после grace_seconds
     seconds_since_start >= grace_seconds
+}
+
+pub fn floor_dp(value: Decimal, dp: u32) -> Decimal {
+    value.round_dp_with_strategy(dp, RoundingStrategy::ToZero)
 }
 
 // if before market start left <= grace_seconds, we can't trade
