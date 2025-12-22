@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
 
+/// if current time > grace_second we count it as a stop-loss
 pub fn allow_stop_loss(market_timestamp: i64, grace_seconds: i64) -> bool {
     // текущее время в unix timestamp (UTC)
     let now = SystemTime::now()
@@ -46,7 +47,7 @@ pub fn floor_dp(value: Decimal, dp: u32) -> Decimal {
     value.round_dp_with_strategy(dp, RoundingStrategy::ToZero)
 }
 
-pub async fn close_order_with_retry(
+pub async fn close_position_with_retry(
     client: &Arc<Client<Authenticated<Normal>>>,
     signer: &LocalSigner<SigningKey>,
     asset_id: &String,
@@ -56,7 +57,7 @@ pub async fn close_order_with_retry(
     let mut attempt = 0;
 
     loop {
-        let response = close_order_by_market(&client, &signer, asset_id, close_size)
+        let response = close_position_by_market(&client, &signer, asset_id, close_size)
             .await
             .ok()?;
 
@@ -111,6 +112,31 @@ pub async fn get_order_with_retry(
     }
 }
 
+pub async fn handle_live_order(
+    client: &Arc<Client<Authenticated<Normal>>>,
+    signer: &LocalSigner<SigningKey>,
+    status: &OpenOrderResponse,
+    hedge_config: HedgeConfig,
+    cancel_order_id: &str,
+) -> polymarket_client_sdk::Result<bool> {
+    if !status.size_matched.is_zero() {
+        prevent_holding_position(
+            client,
+            signer,
+            PreventHoldingConfig {
+                hedge_config,
+                order_id: cancel_order_id.to_string(),
+            },
+        )
+        .await?;
+        Ok(true)
+    } else {
+        println!("No open position, going to cancel it");
+        client.cancel_order(cancel_order_id).await?;
+        Ok(false)
+    }
+}
+
 pub async fn prevent_holding_position(
     client: &Arc<Client<Authenticated<Normal>>>,
     signer: &LocalSigner<SigningKey>,
@@ -120,17 +146,14 @@ pub async fn prevent_holding_position(
         .cancel_order(&prevent_holding_config.order_id)
         .await?;
     println!("Cancelled first order, closing now");
+
     let first_order_status: OpenOrderResponse = client
         .order(&prevent_holding_config.order_id.as_str())
         .await?;
-    let mut first_order_size = floor_dp(first_order_status.size_matched, 2);
-    if first_order_size.is_zero() {
-        println!(
-            "Retrieved bad data from polymarket about size: {}",
-            &first_order_size
-        );
-        first_order_size = prevent_holding_config.hedge_config.hedge_size;
-    };
+    let first_order_size = normalized_size(
+        first_order_status.size_matched,
+        prevent_holding_config.hedge_config.hedge_size,
+    );
     println!(
         "Time's up to wait for first order opening, going to open hedge with size = {}",
         &first_order_size
@@ -146,6 +169,16 @@ pub async fn prevent_holding_position(
     };
     loop {
         manage_position_after_match(client, signer, true_hedge_config.clone()).await?;
+    }
+}
+
+pub fn normalized_size(size: Decimal, fallback: Decimal) -> Decimal {
+    let s = floor_dp(size, 2);
+    if s.is_zero() {
+        println!("Retrieved bad data from polymarket about size: {}", s);
+        fallback
+    } else {
+        s
     }
 }
 
@@ -199,15 +232,9 @@ pub async fn manage_position_after_match(
                 get_order_with_retry(client, hedge_order.order_id.as_str(), 10).await?;
             if hedge_order_status.size_matched > Decimal::zero() {
                 println!("Hedge order partially matched, closing it...");
-                let mut closing_hedge_size = floor_dp(hedge_order_status.size_matched, 2);
-                if closing_hedge_size == Decimal::zero() {
-                    println!(
-                        "Retrieved bad data from polymarket about size: {}",
-                        closing_hedge_size
-                    );
-                    closing_hedge_size = hedge_size;
-                }
-                match close_order_with_retry(
+                let closing_hedge_size =
+                    normalized_size(hedge_order_status.size_matched, hedge_size);
+                if let Some(closed_order) = close_position_with_retry(
                     client,
                     signer,
                     &hedge_config.hedge_asset_id,
@@ -216,19 +243,16 @@ pub async fn manage_position_after_match(
                 )
                 .await
                 {
-                    Some(closed_order) => {
-                        println!(
-                            "Hedge order after partially filling closed: {:?}",
-                            closed_order
-                        );
-                    }
-                    None => {
-                        println!("Failed to close hedge order");
-                    }
+                    println!(
+                        "Hedge order after partially filling closed: {:?}",
+                        closed_order
+                    );
+                } else {
+                    println!("Failed to close hedge order");
                 }
             }
 
-            match close_order_with_retry(
+            if let Some(closed_order) = close_position_with_retry(
                 client,
                 signer,
                 &hedge_config.initial_asset_id,
@@ -237,27 +261,24 @@ pub async fn manage_position_after_match(
             )
             .await
             {
-                Some(closed_order) => {
-                    println!("Initial position closed after sl: {:?}", closed_order);
-                    return Ok(-1);
-                }
-                None => {
-                    println!("Failed to close initial position");
-                    return Ok(0);
-                }
+                println!("Initial position closed after sl: {:?}", closed_order);
+                return Ok(-1);
+            } else {
+                println!("Failed to close initial position");
+                return Ok(0);
             }
         }
     }
 }
 
-// if before market start left <= grace_seconds, we can't trade
+// if before market start left <= grace_seconds, we can't open new positions
 pub fn allow_trade(market_timestamp: i64, grace_seconds: i64) -> bool {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time went backwards")
         .as_secs() as i64;
 
-    now < market_timestamp - grace_seconds
+    now <= market_timestamp - grace_seconds
 }
 
 pub fn nearest_quarter_hour() -> i64 {
@@ -310,7 +331,7 @@ pub async fn get_tokens(
     })
 }
 
-pub async fn close_order_by_market(
+pub async fn close_position_by_market(
     client: &Arc<Client<Authenticated<Normal>>>,
     signer: &LocalSigner<SigningKey>,
     token_id: &String,
