@@ -210,7 +210,7 @@ pub async fn manage_position_after_match(
             "Second order partially matched with size: {}",
             &closing_second_size
         );
-        hedge_size = hedge_config.hedge_size - closing_second_size;
+        hedge_size = closing_second_size -hedge_config.hedge_size;
     }
 
     let hedge_order: OrderResponse = place_hedge_order(
