@@ -112,6 +112,16 @@ pub async fn get_order_with_retry(
     }
 }
 
+pub async fn handle_matched(
+    client: &Arc<Client<Authenticated<Normal>>>,
+    signer: &LocalSigner<SigningKey>,
+    cancel_order_id: &str,
+    hedge_config: HedgeConfig,
+) -> polymarket_client_sdk::Result<i8> {
+    client.cancel_order(cancel_order_id).await?;
+    manage_position_after_match(client, signer, hedge_config).await
+}
+
 pub async fn handle_live_order(
     client: &Arc<Client<Authenticated<Normal>>>,
     signer: &LocalSigner<SigningKey>,
