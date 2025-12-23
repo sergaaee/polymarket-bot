@@ -160,6 +160,10 @@ async fn main() -> anyhow::Result<()> {
                             break;
                         }
                         if first_order.status == "CANCELED" && second_order.status == "CANCELED" {
+                            println!(
+                                "Orders were canceled: first: {:?}, second: {:?}",
+                                first_order, second_order
+                            );
                             break;
                         }
 
