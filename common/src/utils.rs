@@ -245,9 +245,12 @@ pub async fn manage_position_after_match(
             println!("Stop loss reached, cancelling hedge order and closing position...");
             client.cancel_order(&hedge_order.order_id.as_str()).await?;
             println!("Hedge order canceled");
+            sleep(Duration::from_secs(1)).await;
             let hedge_order_status: OpenOrderResponse =
                 get_order_with_retry(client, hedge_order.order_id.as_str(), 10).await?;
-            if hedge_order_status.size_matched > Decimal::zero() {
+            if hedge_order_status.size_matched > Decimal::zero()
+                && hedge_order_status.size_matched != hedge_size
+            {
                 println!("Hedge order partially matched, closing it...");
                 let closing_hedge_size =
                     normalized_size(hedge_order_status.size_matched, hedge_size);
