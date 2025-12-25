@@ -125,7 +125,7 @@
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "100 * sum(pm_orders_matched_total{asset=~\"$asset\"}) / sum(pm_hedge_orders_total{asset=~\"$asset\"})"
+          "expr": "100 * sum(pm_orders_matched_total{asset=~\"$asset\"}) / sum(hedge_orders_matched_total{asset=~\"$asset\"})"
         }
       ],
       "fieldConfig": {
