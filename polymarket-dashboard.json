@@ -2,7 +2,12 @@
   "id": null,
   "uid": "polymarket-bot",
   "title": "Polymarket Bot – Trading & Performance",
-  "tags": ["polymarket", "trading", "bot", "prometheus"],
+  "tags": [
+    "polymarket",
+    "trading",
+    "bot",
+    "prometheus"
+  ],
   "timezone": "browser",
   "schemaVersion": 38,
   "version": 1,
@@ -24,7 +29,12 @@
     {
       "type": "timeseries",
       "title": "API Latency (p50 / p95 / p99)",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
       "datasource": "Prometheus",
       "targets": [
         {
@@ -41,64 +51,108 @@
         }
       ]
     },
-
     {
       "type": "stat",
       "title": "Orders Total",
-      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 4 },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 6,
+        "h": 4
+      },
       "datasource": "Prometheus",
       "targets": [
-        { "expr": "sum(pm_orders_total{asset=~\"$asset\"})" }
+        {
+          "expr": "sum(pm_orders_total{asset=~\"$asset\"})"
+        }
       ]
     },
-
     {
       "type": "stat",
       "title": "Matched Orders Total",
-      "gridPos": { "x": 6, "y": 8, "w": 6, "h": 4 },
+      "gridPos": {
+        "x": 6,
+        "y": 8,
+        "w": 6,
+        "h": 4
+      },
       "datasource": "Prometheus",
       "targets": [
-        { "expr": "sum(pm_orders_matched_total{asset=~\"$asset\"})" }
+        {
+          "expr": "sum(pm_orders_matched_total{asset=~\"$asset\"})"
+        }
       ]
     },
-
     {
       "type": "stat",
       "title": "Cancelled Orders Total",
-      "gridPos": { "x": 12, "y": 8, "w": 6, "h": 4 },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 6,
+        "h": 4
+      },
       "datasource": "Prometheus",
       "targets": [
-        { "expr": "sum(orders_cancelled_total{asset=~\"$asset\"})" }
+        {
+          "expr": "sum(orders_cancelled_total{asset=~\"$asset\"})"
+        }
       ]
     },
-
     {
       "type": "stat",
       "title": "Partial Matches Total",
-      "gridPos": { "x": 18, "y": 8, "w": 6, "h": 4 },
+      "gridPos": {
+        "x": 18,
+        "y": 8,
+        "w": 6,
+        "h": 4
+      },
       "datasource": "Prometheus",
       "targets": [
-        { "expr": "sum(orders_partial_total{asset=~\"$asset\"})" }
+        {
+          "expr": "sum(orders_partial_total{asset=~\"$asset\"})"
+        }
       ]
     },
-
     {
       "type": "timeseries",
       "title": "Hedge Orders Total Flow",
-      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 7 },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 7
+      },
       "datasource": "Prometheus",
       "targets": [
-        { "expr": "sum(hedge_orders_total{asset=~\"$asset\"})", "legendFormat": "created" },
-        { "expr": "sum(hedge_orders_matched_total{asset=~\"$asset\"})", "legendFormat": "matched" },
-        { "expr": "sum(hedge_orders_partial_total{asset=~\"$asset\"})", "legendFormat": "partial" },
-        { "expr": "sum(hedge_orders_cancelled_total{asset=~\"$asset\"})", "legendFormat": "cancelled" }
+        {
+          "expr": "sum(hedge_orders_total{asset=~\"$asset\"})",
+          "legendFormat": "created"
+        },
+        {
+          "expr": "sum(hedge_orders_matched_total{asset=~\"$asset\"})",
+          "legendFormat": "matched"
+        },
+        {
+          "expr": "sum(hedge_orders_partial_total{asset=~\"$asset\"})",
+          "legendFormat": "partial"
+        },
+        {
+          "expr": "sum(hedge_orders_cancelled_total{asset=~\"$asset\"})",
+          "legendFormat": "cancelled"
+        }
       ]
     },
-
     {
       "type": "timeseries",
       "title": "Retries by operation",
-      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 6 },
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 6
+      },
       "datasource": "Prometheus",
       "targets": [
         {
@@ -107,21 +161,15 @@
         }
       ]
     },
-
-    {
-      "type": "timeseries",
-      "title": "PnL by Asset",
-      "gridPos": { "x": 0, "y": 25, "w": 24, "h": 7 },
-      "datasource": "Prometheus",
-      "targets": [
-        { "expr": "bot_pnl{asset=~\"$asset\"}", "legendFormat": "{{asset}}" }
-      ]
-    },
-
     {
       "type": "stat",
       "title": "Win rate %",
-      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 4 },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 4
+      },
       "datasource": "Prometheus",
       "targets": [
         {
@@ -129,17 +177,25 @@
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "percent" }
+        "defaults": {
+          "unit": "percent"
+        }
       }
     },
-
     {
       "type": "stat",
       "title": "Stop-Loss Triggers Total",
-      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 4 },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 4
+      },
       "datasource": "Prometheus",
       "targets": [
-        { "expr": "sum(pm_stop_loss_total{asset=~\"$asset\"})" }
+        {
+          "expr": "sum(pm_stop_loss_total{asset=~\"$asset\"})"
+        }
       ]
     }
   ]
