@@ -1,5 +1,9 @@
 use crate::dto::{Asset, OrderResponse};
-use crate::metrics::{HEDGE_ORDERS_CANCELLED_TOTAL, HEDGE_ORDERS_MATCHED_TOTAL, HEDGE_ORDERS_PARTIAL_TOTAL, HEDGE_ORDERS_TOTAL, ORDERS_CANCELLED_TOTAL, ORDERS_MATCHED_TOTAL, ORDERS_PARTIAL_TOTAL, ORDERS_TOTAL, REQUEST_LATENCY, RETRIES_TOTAL, STOP_LOSS_TOTAL};
+use crate::metrics::{
+    HEDGE_ORDERS_CANCELLED_TOTAL, HEDGE_ORDERS_MATCHED_TOTAL, HEDGE_ORDERS_PARTIAL_TOTAL,
+    HEDGE_ORDERS_TOTAL, ORDERS_CANCELLED_TOTAL, ORDERS_MATCHED_TOTAL, ORDERS_PARTIAL_TOTAL,
+    ORDERS_TOTAL, REQUEST_LATENCY, RETRIES_TOTAL, STOP_LOSS_TOTAL,
+};
 use crate::{HedgeConfig, MarketApiResponse, MarketResponse, PreventHoldingConfig};
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy::signers::k256::ecdsa::signature::SignerMut;
@@ -317,7 +321,7 @@ pub async fn manage_position_after_match(
         sleep(Duration::from_secs(1)).await;
         if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, 15) {
             STOP_LOSS_TOTAL
-                .with_label_values(&[&hedge_config.initial_asset_id])
+                .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
 
             println!("Stop loss reached, cancelling hedge order and closing position...");
