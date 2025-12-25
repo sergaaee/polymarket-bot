@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-polymarket-client-sdk = {workspace = true}
-alloy = {workspace = true}
-tokio = {workspace = true}
-anyhow = {workspace = true}
-alloy-primitives = {workspace = true}
-dotenvy = {workspace = true}
-rust_decimal = {workspace = true}
-reqwest = {workspace = true}
-common = {path = "../common"}
+polymarket-client-sdk = { workspace = true }
+alloy = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+alloy-primitives = { workspace = true }
+dotenvy = { workspace = true }
+rust_decimal = { workspace = true }
+reqwest = { workspace = true }
+common = { path = "../common" }
+axum = { workspace = true }
+prometheus = { workspace = true }

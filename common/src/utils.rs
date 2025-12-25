@@ -1,4 +1,5 @@
 use crate::dto::{Asset, OrderResponse};
+use crate::metrics::{HEDGE_ORDERS_CANCELLED_TOTAL, HEDGE_ORDERS_MATCHED_TOTAL, HEDGE_ORDERS_PARTIAL_TOTAL, HEDGE_ORDERS_TOTAL, ORDERS_CANCELLED_TOTAL, ORDERS_MATCHED_TOTAL, ORDERS_PARTIAL_TOTAL, REQUEST_LATENCY, RETRIES_TOTAL, STOP_LOSS_TOTAL};
 use crate::{HedgeConfig, MarketApiResponse, MarketResponse, PreventHoldingConfig};
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy::signers::k256::ecdsa::signature::SignerMut;
@@ -16,8 +17,24 @@ use rust_decimal::prelude::Zero;
 use rust_decimal::{Decimal, RoundingStrategy};
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
+
+pub async fn timed_request<F, T>(service: &str, method: &str, f: F) -> T
+where
+    F: Future<Output = T>,
+{
+    let start = Instant::now();
+    let result = f.await;
+    let elapsed = start.elapsed().as_secs_f64();
+
+    REQUEST_LATENCY
+        .with_label_values(&[service, method])
+        .observe(elapsed);
+
+    result
+}
 
 /// if current time > grace_second we count it as a stop-loss
 pub fn allow_stop_loss(market_timestamp: i64, grace_seconds: i64) -> bool {
@@ -68,6 +85,7 @@ pub async fn close_position_with_retry(
             }
             Some(err) => {
                 attempt += 1;
+                RETRIES_TOTAL.with_label_values(&["close_position"]).inc();
 
                 if attempt >= max_retries {
                     return None;
@@ -91,11 +109,12 @@ pub async fn get_order_with_retry(
     let mut attempt = 0;
 
     loop {
-        match client.order(order_id).await {
+        match timed_request("polymarket", "get_order", client.order(order_id)).await {
             Ok(status) => return Ok(status),
 
             Err(err) => {
                 attempt += 1;
+                RETRIES_TOTAL.with_label_values(&["close_position"]).inc();
 
                 if attempt >= max_retries {
                     return Err(err);
@@ -118,8 +137,17 @@ pub async fn handle_matched(
     cancel_order_id: &str,
     hedge_config: HedgeConfig,
 ) -> polymarket_client_sdk::Result<i8> {
+    ORDERS_MATCHED_TOTAL
+        .with_label_values(&[&hedge_config.asset.to_string()])
+        .inc();
+
     println!("Cancelling another order...");
-    client.cancel_order(cancel_order_id).await?;
+    timed_request(
+        "polymarket",
+        "cancel_order",
+        client.cancel_order(cancel_order_id),
+    )
+    .await?;
     manage_position_after_match(client, signer, hedge_config).await
 }
 
@@ -131,6 +159,9 @@ pub async fn handle_live_order(
     cancel_order_id: &str,
 ) -> polymarket_client_sdk::Result<bool> {
     if !status.size_matched.is_zero() {
+        ORDERS_PARTIAL_TOTAL
+            .with_label_values(&[&hedge_config.asset.to_string()])
+            .inc();
         prevent_holding_position(
             client,
             signer,
@@ -142,8 +173,17 @@ pub async fn handle_live_order(
         .await?;
         Ok(true)
     } else {
+        ORDERS_CANCELLED_TOTAL
+            .with_label_values(&[&hedge_config.asset.to_string()])
+            .inc();
+
         println!("No open position, going to cancel it");
-        client.cancel_order(cancel_order_id).await?;
+        timed_request(
+            "polymarket",
+            "cancel_order",
+            client.cancel_order(cancel_order_id),
+        )
+        .await?;
         Ok(false)
     }
 }
@@ -153,14 +193,20 @@ pub async fn prevent_holding_position(
     signer: &LocalSigner<SigningKey>,
     prevent_holding_config: PreventHoldingConfig,
 ) -> polymarket_client_sdk::Result<()> {
-    client
-        .cancel_order(&prevent_holding_config.order_id)
-        .await?;
+    ORDERS_CANCELLED_TOTAL
+        .with_label_values(&[&prevent_holding_config.hedge_config.asset.to_string()])
+        .inc();
+
+    timed_request(
+        "polymarket",
+        "cancel_order",
+        client.cancel_order(&prevent_holding_config.order_id),
+    )
+    .await?;
     println!("Cancelled first order, closing now");
 
-    let first_order_status: OpenOrderResponse = client
-        .order(&prevent_holding_config.order_id.as_str())
-        .await?;
+    let first_order_status: OpenOrderResponse =
+        get_order_with_retry(&client, &prevent_holding_config.order_id.as_str(), 30).await?;
     let first_order_size = normalized_size(
         first_order_status.size_matched,
         prevent_holding_config.hedge_config.hedge_size,
@@ -177,6 +223,7 @@ pub async fn prevent_holding_position(
         hedge_enter_price: prevent_holding_config.hedge_config.hedge_enter_price,
         close_size: first_order_size,
         timestamp: prevent_holding_config.hedge_config.timestamp,
+        asset: prevent_holding_config.hedge_config.asset,
     };
     manage_position_after_match(client, signer, true_hedge_config.clone()).await?;
     Ok(())
@@ -201,9 +248,16 @@ pub async fn manage_position_after_match(
         get_order_with_retry(client, hedge_config.second_order_id.as_str(), 30).await?;
     if second_order_status.status != "CANCELED" {
         println!("Cancelling second order...");
-        client
-            .cancel_order(hedge_config.second_order_id.as_str())
-            .await?;
+        ORDERS_CANCELLED_TOTAL
+            .with_label_values(&[&hedge_config.asset.to_string()])
+            .inc();
+
+        timed_request(
+            "polymarket",
+            "cancel_order",
+            client.cancel_order(hedge_config.second_order_id.as_str()),
+        )
+        .await?;
         println!("Second order cancelled");
     }
     let second_order_status: OpenOrderResponse =
@@ -227,6 +281,7 @@ pub async fn manage_position_after_match(
         hedge_config.hedge_asset_id.clone(),
         hedge_size,
         hedge_config.hedge_enter_price,
+        &hedge_config.asset,
     )
     .await?;
     println!("Hedge order placed: {:?}", hedge_order);
@@ -237,13 +292,30 @@ pub async fn manage_position_after_match(
             get_order_with_retry(client, hedge_order.order_id.as_str(), 20).await?;
         println!("Hedge order status: {:?}", hedge_order_status.status);
         if hedge_order_status.status == "MATCHED" {
+            HEDGE_ORDERS_MATCHED_TOTAL
+                .with_label_values(&[&hedge_config.asset.to_string()])
+                .inc();
+
             println!("Hedge order matched");
             return Ok(1);
         }
         sleep(Duration::from_secs(1)).await;
         if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, 15) {
+            STOP_LOSS_TOTAL
+                .with_label_values(&[&hedge_config.initial_asset_id])
+                .inc();
+
             println!("Stop loss reached, cancelling hedge order and closing position...");
-            client.cancel_order(&hedge_order.order_id.as_str()).await?;
+            timed_request(
+                "polymarket",
+                "cancel_order",
+                client.cancel_order(&hedge_order.order_id.as_str()),
+            )
+            .await?;
+
+            HEDGE_ORDERS_CANCELLED_TOTAL
+                .with_label_values(&[&hedge_config.asset.to_string()])
+                .inc();
             println!("Hedge order canceled");
             sleep(Duration::from_secs(1)).await;
             let hedge_order_status: OpenOrderResponse =
@@ -251,6 +323,10 @@ pub async fn manage_position_after_match(
             if hedge_order_status.size_matched > Decimal::zero()
                 && hedge_order_status.size_matched != hedge_size
             {
+                HEDGE_ORDERS_PARTIAL_TOTAL
+                    .with_label_values(&[&hedge_config.asset.to_string()])
+                    .inc();
+
                 println!("Hedge order partially matched, closing it...");
                 let closing_hedge_size =
                     normalized_size(hedge_order_status.size_matched, hedge_size);
@@ -367,7 +443,12 @@ pub async fn close_position_by_market(
         .await?;
     let signed_order = client.sign(signer, market_order).await?;
     println!("closing position by market order",);
-    let result = client.post_order(signed_order).await?;
+    let result = timed_request(
+        "polymarket",
+        "close_position_by_market",
+        client.post_order(signed_order),
+    )
+    .await?;
 
     Ok(result[0].clone())
 }
@@ -378,7 +459,12 @@ pub async fn place_hedge_order(
     token_id: String,
     order_size: Decimal,
     price: Decimal,
+    asset: &Asset,
 ) -> polymarket_client_sdk::Result<OrderResponse> {
+    HEDGE_ORDERS_TOTAL
+        .with_label_values(&[asset.to_string().as_str()])
+        .inc();
+
     let order = client
         .limit_order()
         .token_id(&token_id)
@@ -390,7 +476,13 @@ pub async fn place_hedge_order(
         .await?;
 
     let signed_order = client.sign(signer, order).await?;
-    let response = client.post_order(signed_order).await?;
+    let response = timed_request(
+        "polymarket",
+        "place_hedge_order",
+        client.post_order(signed_order),
+    )
+    .await?;
+
     Ok(OrderResponse {
         token_id: token_id,
         order_id: response[0].order_id.clone(),
@@ -416,7 +508,12 @@ pub async fn open_start_positions(
         .await?;
 
     let signed_order = client.sign(signer, first_order).await?;
-    let response = client.post_order(signed_order).await?;
+    let response = timed_request(
+        "polymarket",
+        "open_first_start_positions",
+        client.post_order(signed_order),
+    )
+    .await?;
     orders.push(OrderResponse {
         token_id: tokens.first_asset_id,
         order_id: response[0].order_id.clone(),
@@ -435,7 +532,12 @@ pub async fn open_start_positions(
         .await?;
 
     let signed_order = client.sign(signer, second_order).await?;
-    let response = client.post_order(signed_order).await?;
+    let response = timed_request(
+        "polymarket",
+        "open_second_start_positions",
+        client.post_order(signed_order),
+    )
+    .await?;
     orders.push(OrderResponse {
         token_id: tokens.second_asset_id,
         order_id: response[0].order_id.clone(),
@@ -453,5 +555,5 @@ pub async fn get_asset_price(
         .side(Side::Sell)
         .build()?;
 
-    client.price(&price_request).await
+    timed_request("polymarket", "price", client.price(&price_request)).await
 }

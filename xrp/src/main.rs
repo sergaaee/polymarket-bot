@@ -121,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
                                     close_size,
                                     hedge_enter_price,
                                     timestamp,
+                                    asset: Asset::XRP
                                 },
                             )
                                 .await?;
@@ -148,6 +149,7 @@ async fn main() -> anyhow::Result<()> {
                                     close_size,
                                     hedge_enter_price,
                                     timestamp,
+                                    asset: Asset::XRP
                                 },
                             )
                                 .await?;
@@ -183,6 +185,7 @@ async fn main() -> anyhow::Result<()> {
                                         close_size: size,
                                         hedge_enter_price,
                                         timestamp,
+                                        asset: Asset::XRP
                                     },
                                     &first_order_id,
                                 )
@@ -206,6 +209,7 @@ async fn main() -> anyhow::Result<()> {
                                         close_size: size,
                                         hedge_enter_price,
                                         timestamp,
+                                        asset: Asset::XRP
                                     },
                                     &second_order_id,
                                 )

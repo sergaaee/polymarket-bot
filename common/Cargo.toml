@@ -4,10 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-polymarket-client-sdk = {workspace = true}
-alloy = {workspace = true}
-tokio = {workspace = true}
-rust_decimal = {workspace = true}
-reqwest = {workspace = true}
-serde = {workspace = true}
-chrono = {workspace = true}
+polymarket-client-sdk = { workspace = true }
+alloy = { workspace = true }
+tokio = { workspace = true }
+rust_decimal = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true }
+prometheus = "0.13"
+lazy_static = "1.4"

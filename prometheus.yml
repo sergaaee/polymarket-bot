@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'polymarket'
+    static_configs:
+      - targets: [ 'host.docker.internal:9101' ]
+        labels:
+          currency: 'btc'
+      - targets: [ 'host.docker.internal:9102' ]
+        labels:
+          currency: 'eth'
+      - targets: [ 'host.docker.internal:9103' ]
+        labels:
+          currency: 'sol'
+      - targets: [ 'host.docker.internal:9104' ]
+        labels:
+          currency: 'xrp'
+

@@ -24,6 +24,7 @@ pub struct OrderResponse {
 
 #[derive(Debug, Clone)]
 pub struct HedgeConfig {
+    pub asset: Asset,
     pub second_order_id: String,
     pub hedge_asset_id: String,
     pub initial_asset_id: String,
