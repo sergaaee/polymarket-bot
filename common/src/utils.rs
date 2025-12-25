@@ -1,5 +1,5 @@
 use crate::dto::{Asset, OrderResponse};
-use crate::metrics::{HEDGE_ORDERS_CANCELLED_TOTAL, HEDGE_ORDERS_MATCHED_TOTAL, HEDGE_ORDERS_PARTIAL_TOTAL, HEDGE_ORDERS_TOTAL, ORDERS_CANCELLED_TOTAL, ORDERS_MATCHED_TOTAL, ORDERS_PARTIAL_TOTAL, REQUEST_LATENCY, RETRIES_TOTAL, STOP_LOSS_TOTAL};
+use crate::metrics::{HEDGE_ORDERS_CANCELLED_TOTAL, HEDGE_ORDERS_MATCHED_TOTAL, HEDGE_ORDERS_PARTIAL_TOTAL, HEDGE_ORDERS_TOTAL, ORDERS_CANCELLED_TOTAL, ORDERS_MATCHED_TOTAL, ORDERS_PARTIAL_TOTAL, ORDERS_TOTAL, REQUEST_LATENCY, RETRIES_TOTAL, STOP_LOSS_TOTAL};
 use crate::{HedgeConfig, MarketApiResponse, MarketResponse, PreventHoldingConfig};
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy::signers::k256::ecdsa::signature::SignerMut;
@@ -137,6 +137,13 @@ pub async fn handle_matched(
     cancel_order_id: &str,
     hedge_config: HedgeConfig,
 ) -> polymarket_client_sdk::Result<i8> {
+    ORDERS_TOTAL
+        .with_label_values(&[&hedge_config.asset.to_string()])
+        .inc();
+    ORDERS_TOTAL
+        .with_label_values(&[&hedge_config.asset.to_string()])
+        .inc();
+
     ORDERS_MATCHED_TOTAL
         .with_label_values(&[&hedge_config.asset.to_string()])
         .inc();
@@ -158,6 +165,10 @@ pub async fn handle_live_order(
     hedge_config: HedgeConfig,
     cancel_order_id: &str,
 ) -> polymarket_client_sdk::Result<bool> {
+    ORDERS_TOTAL
+        .with_label_values(&[&hedge_config.asset.to_string()])
+        .inc();
+
     if !status.size_matched.is_zero() {
         ORDERS_PARTIAL_TOTAL
             .with_label_values(&[&hedge_config.asset.to_string()])
@@ -264,6 +275,10 @@ pub async fn manage_position_after_match(
         get_order_with_retry(client, hedge_config.second_order_id.as_str(), 30).await?;
     let mut hedge_size = hedge_config.hedge_size;
     if second_order_status.size_matched > Decimal::zero() {
+        ORDERS_PARTIAL_TOTAL
+            .with_label_values(&[&hedge_config.asset.to_string()])
+            .inc();
+
         let closing_second_size = floor_dp(second_order_status.size_matched, 2);
         println!(
             "Second order partially matched with size: {}",
