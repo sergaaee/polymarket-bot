@@ -394,7 +394,7 @@ pub async fn manage_position_after_match(
                         closing_hedge_size,
                         current_second_asset_price,
                         &hedge_config.asset,
-                        OrderType::FOK,
+                        OrderType::GTC,
                     ),
                 )
                 .await?;
@@ -408,6 +408,14 @@ pub async fn manage_position_after_match(
                 .await?;
                 if hedge_order_status.status == "MATCHED" {
                     return Ok(1);
+                } else {
+                    println!("Hedge order not matched yet, trying again...");
+                    timed_request(
+                        "polymarket",
+                        "cancel_order",
+                        client.cancel_order(hedge_config.second_order_id.as_str()),
+                    )
+                    .await?;
                 }
             }
 
