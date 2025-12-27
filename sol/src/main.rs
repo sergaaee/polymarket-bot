@@ -136,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
                             get_order_with_retry(&client, &second_order_id.as_str(), 10, &Asset::SOL).await?;
 
                         // if left lest than grace_seconds till market open we don't want to wait anymore to open positions
-                        let is_holding_allowed = allow_trade(timestamp, 10);
+                        let is_holding_allowed = true; //allow_trade(timestamp, 10); 
                         println!(
                             "Holding allowed: {}, first: {}, second: {}",
                             is_holding_allowed, first_order.status, second_order.status
