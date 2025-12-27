@@ -3,7 +3,6 @@ use alloy::signers::Signer as _;
 use alloy::signers::local::LocalSigner;
 use alloy_primitives::Address;
 
-use axum::{Router, routing::get};
 use common::*;
 use polymarket_client_sdk::clob::{Client, Config};
 use polymarket_client_sdk::types::SignatureType;
@@ -11,12 +10,9 @@ use polymarket_client_sdk::{POLYGON, PRIVATE_KEY_VAR};
 use prometheus::{Encoder, TextEncoder};
 use reqwest::Client as http_client;
 use rust_decimal::Decimal;
-use std::net::SocketAddr;
 use std::str::FromStr as _;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpListener;
-use tokio::task;
 use tokio::time::sleep;
 
 fn get_metrics_port() -> u16 {
@@ -140,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
                             get_order_with_retry(&client, &second_order_id.as_str(), 10, &Asset::BTC).await?;
 
                         // if left lest than grace_seconds till market open we don't want to wait anymore to open positions
-                        let is_holding_allowed = allow_trade(timestamp, 10);
+                        let is_holding_allowed = true; //allow_trade(timestamp, 10); 
                         println!(
                             "Holding allowed: {}, first: {}, second: {}",
                             is_holding_allowed, first_order.status, second_order.status
