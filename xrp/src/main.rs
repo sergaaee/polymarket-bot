@@ -3,7 +3,6 @@ use alloy::signers::Signer as _;
 use alloy::signers::local::LocalSigner;
 use alloy_primitives::Address;
 
-use axum::{Router, routing::get};
 use common::*;
 use polymarket_client_sdk::clob::{Client, Config};
 use polymarket_client_sdk::types::SignatureType;
@@ -11,12 +10,9 @@ use polymarket_client_sdk::{POLYGON, PRIVATE_KEY_VAR};
 use prometheus::{Encoder, TextEncoder};
 use reqwest::Client as http_client;
 use rust_decimal::Decimal;
-use std::net::SocketAddr;
 use std::str::FromStr as _;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpListener;
-use tokio::task;
 use tokio::time::sleep;
 
 fn get_metrics_port() -> u16 {
@@ -154,6 +150,7 @@ async fn main() -> anyhow::Result<()> {
                                 &signer,
                                 &second_order_id,
                                 HedgeConfig {
+                                    initial_entry_price: limit_enter_price,
                                     second_order_id: second_order_id.clone(),
                                     hedge_asset_id: tokens.second_asset_id.clone(),
                                     initial_asset_id: tokens.first_asset_id.clone(),
@@ -182,6 +179,7 @@ async fn main() -> anyhow::Result<()> {
                                 &signer,
                                 &first_order_id,
                                 HedgeConfig {
+                                    initial_entry_price: limit_enter_price,
                                     second_order_id: first_order_id.clone(),
                                     hedge_asset_id: tokens.first_asset_id.clone(),
                                     initial_asset_id: tokens.second_asset_id.clone(),
@@ -218,6 +216,7 @@ async fn main() -> anyhow::Result<()> {
                                     &signer,
                                     &first_order,
                                     HedgeConfig {
+                                        initial_entry_price: limit_enter_price,
                                         second_order_id: second_order_id.clone(),
                                         hedge_asset_id: tokens.second_asset_id.clone(),
                                         initial_asset_id: tokens.first_asset_id.clone(),
@@ -242,6 +241,7 @@ async fn main() -> anyhow::Result<()> {
                                     &signer,
                                     &second_order,
                                     HedgeConfig {
+                                        initial_entry_price: limit_enter_price,
                                         second_order_id: first_order_id.clone(),
                                         hedge_asset_id: tokens.first_asset_id.clone(),
                                         initial_asset_id: tokens.second_asset_id.clone(),

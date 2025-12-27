@@ -74,7 +74,7 @@ pub async fn close_position_with_retry(
     asset_id: &String,
     close_size: Decimal,
     max_retries: usize,
-    asset: &Asset
+    asset: &Asset,
 ) -> Option<PostOrderResponse> {
     let mut attempt = 0;
 
@@ -90,7 +90,9 @@ pub async fn close_position_with_retry(
             }
             Some(err) => {
                 attempt += 1;
-                RETRIES_TOTAL.with_label_values(&[asset.to_string().as_str(), "close_position"]).inc();
+                RETRIES_TOTAL
+                    .with_label_values(&[asset.to_string().as_str(), "close_position"])
+                    .inc();
 
                 if attempt >= max_retries {
                     return None;
@@ -110,7 +112,7 @@ pub async fn get_order_with_retry(
     client: &Arc<Client<Authenticated<Normal>>>,
     order_id: &str,
     max_retries: usize,
-    asset: &Asset
+    asset: &Asset,
 ) -> polymarket_client_sdk::Result<OpenOrderResponse> {
     let mut attempt = 0;
 
@@ -120,7 +122,9 @@ pub async fn get_order_with_retry(
 
             Err(err) => {
                 attempt += 1;
-                RETRIES_TOTAL.with_label_values(&[asset.to_string().as_str(), "get_order"]).inc();
+                RETRIES_TOTAL
+                    .with_label_values(&[asset.to_string().as_str(), "get_order"])
+                    .inc();
 
                 if attempt >= max_retries {
                     return Err(err);
@@ -222,8 +226,13 @@ pub async fn prevent_holding_position(
     .await?;
     println!("Cancelled first order, closing now");
 
-    let first_order_status: OpenOrderResponse =
-        get_order_with_retry(&client, &prevent_holding_config.order_id.as_str(), 30, &prevent_holding_config.hedge_config.asset).await?;
+    let first_order_status: OpenOrderResponse = get_order_with_retry(
+        &client,
+        &prevent_holding_config.order_id.as_str(),
+        30,
+        &prevent_holding_config.hedge_config.asset,
+    )
+    .await?;
     let first_order_size = normalized_size(
         first_order_status.size_matched,
         prevent_holding_config.hedge_config.hedge_size,
@@ -233,6 +242,7 @@ pub async fn prevent_holding_position(
         &first_order_size
     );
     let true_hedge_config = HedgeConfig {
+        initial_entry_price: prevent_holding_config.hedge_config.initial_entry_price,
         second_order_id: prevent_holding_config.hedge_config.second_order_id,
         hedge_asset_id: prevent_holding_config.hedge_config.hedge_asset_id,
         initial_asset_id: prevent_holding_config.hedge_config.initial_asset_id,
@@ -256,13 +266,25 @@ pub fn normalized_size(size: Decimal, fallback: Decimal) -> Decimal {
     }
 }
 
+async fn complete_hedging(
+    client: &Arc<Client<Authenticated<Normal>>>,
+    signer: &LocalSigner<SigningKey>,
+) {
+    todo!()
+}
+
 pub async fn manage_position_after_match(
     client: &Arc<Client<Authenticated<Normal>>>,
     signer: &LocalSigner<SigningKey>,
     hedge_config: HedgeConfig,
 ) -> polymarket_client_sdk::Result<i8> {
-    let second_order_status: OpenOrderResponse =
-        get_order_with_retry(client, hedge_config.second_order_id.as_str(), 30, &hedge_config.asset).await?;
+    let second_order_status: OpenOrderResponse = get_order_with_retry(
+        client,
+        hedge_config.second_order_id.as_str(),
+        30,
+        &hedge_config.asset,
+    )
+    .await?;
     if second_order_status.status != "CANCELED" {
         println!("Cancelling second order...");
         ORDERS_CANCELLED_TOTAL
@@ -277,8 +299,13 @@ pub async fn manage_position_after_match(
         .await?;
         println!("Second order cancelled");
     }
-    let second_order_status: OpenOrderResponse =
-        get_order_with_retry(client, hedge_config.second_order_id.as_str(), 30, &hedge_config.asset).await?;
+    let second_order_status: OpenOrderResponse = get_order_with_retry(
+        client,
+        hedge_config.second_order_id.as_str(),
+        30,
+        &hedge_config.asset,
+    )
+    .await?;
     let mut hedge_size = hedge_config.hedge_size;
     if second_order_status.size_matched > Decimal::zero() {
         ORDERS_PARTIAL_TOTAL
@@ -299,18 +326,24 @@ pub async fn manage_position_after_match(
     let hedge_order: OrderResponse = place_hedge_order(
         &client,
         &signer,
-        hedge_config.hedge_asset_id.clone(),
+        &hedge_config.hedge_asset_id,
         hedge_size,
         hedge_config.hedge_enter_price,
         &hedge_config.asset,
+        OrderType::GTC,
     )
     .await?;
     println!("Hedge order placed: {:?}", hedge_order);
     sleep(Duration::from_secs(10)).await;
 
     loop {
-        let hedge_order_status: OpenOrderResponse =
-            get_order_with_retry(client, hedge_order.order_id.as_str(), 20, &hedge_config.asset).await?;
+        let hedge_order_status: OpenOrderResponse = get_order_with_retry(
+            client,
+            hedge_order.order_id.as_str(),
+            20,
+            &hedge_config.asset,
+        )
+        .await?;
         println!("Hedge order status: {:?}", hedge_order_status.status);
         if hedge_order_status.status == "MATCHED" {
             HEDGE_ORDERS_MATCHED_TOTAL
@@ -321,7 +354,7 @@ pub async fn manage_position_after_match(
             return Ok(1);
         }
         sleep(Duration::from_secs(1)).await;
-        if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, 15) {
+        if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, 60) {
             STOP_LOSS_TOTAL
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
@@ -338,54 +371,92 @@ pub async fn manage_position_after_match(
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
             println!("Hedge order canceled");
-            sleep(Duration::from_secs(1)).await;
-            let hedge_order_status: OpenOrderResponse =
-                get_order_with_retry(client, hedge_order.order_id.as_str(), 10, &hedge_config.asset).await?;
-            if hedge_order_status.size_matched > Decimal::zero()
-                && hedge_order_status.size_matched != hedge_size
-            {
-                HEDGE_ORDERS_PARTIAL_TOTAL
-                    .with_label_values(&[&hedge_config.asset.to_string()])
-                    .inc();
-
-                println!("Hedge order partially matched, closing it...");
-                let closing_hedge_size =
-                    normalized_size(hedge_order_status.size_matched, hedge_size);
-                if let Some(closed_order) = close_position_with_retry(
-                    client,
-                    signer,
-                    &hedge_config.hedge_asset_id,
-                    closing_hedge_size,
-                    30,
-                    &hedge_config.asset
+            loop {
+                let current_second_asset_price = timed_request(
+                    "polymarket",
+                    "get_price",
+                    get_asset_price(client, &hedge_config.hedge_asset_id),
                 )
-                .await
-                {
-                    println!(
-                        "Hedge order after partially filling closed: {:?}",
-                        closed_order
-                    );
-                } else {
-                    println!("Failed to close hedge order");
+                .await?
+                .price;
+                let closing_hedge_size = (hedge_config.close_size
+                    * hedge_config.initial_entry_price)
+                    / (Decimal::ONE - current_second_asset_price);
+                let hedge_order: OrderResponse = timed_request(
+                    "polymarket",
+                    "place_hedge_order",
+                    place_hedge_order(
+                        client,
+                        signer,
+                        &hedge_config.hedge_asset_id,
+                        closing_hedge_size,
+                        current_second_asset_price,
+                        &hedge_config.asset,
+                        OrderType::FOK,
+                    ),
+                )
+                .await?;
+                sleep(Duration::from_secs(5)).await;
+                let hedge_order_status: OpenOrderResponse = get_order_with_retry(
+                    client,
+                    hedge_order.order_id.as_str(),
+                    20,
+                    &hedge_config.asset,
+                )
+                .await?;
+                if hedge_order_status.status == "MATCHED" {
+                    return Ok(1);
                 }
             }
 
-            if let Some(closed_order) = close_position_with_retry(
-                client,
-                signer,
-                &hedge_config.initial_asset_id,
-                hedge_config.close_size,
-                30,
-                &hedge_config.asset
-            )
-            .await
-            {
-                println!("Initial position closed after sl: {:?}", closed_order);
-                return Ok(-1);
-            } else {
-                println!("Failed to close initial position");
-                return Ok(0);
-            }
+            // sleep(Duration::from_secs(1)).await;
+            // let hedge_order_status: OpenOrderResponse =
+            //     get_order_with_retry(client, hedge_order.order_id.as_str(), 10, &hedge_config.asset).await?;
+            // if hedge_order_status.size_matched > Decimal::zero()
+            //     && hedge_order_status.size_matched != hedge_size
+            // {
+            //     HEDGE_ORDERS_PARTIAL_TOTAL
+            //         .with_label_values(&[&hedge_config.asset.to_string()])
+            //         .inc();
+            //
+            //     println!("Hedge order partially matched, closing it...");
+            //     let closing_hedge_size =
+            //         normalized_size(hedge_order_status.size_matched, hedge_size);
+            //     if let Some(closed_order) = close_position_with_retry(
+            //         client,
+            //         signer,
+            //         &hedge_config.hedge_asset_id,
+            //         closing_hedge_size,
+            //         30,
+            //         &hedge_config.asset
+            //     )
+            //     .await
+            //     {
+            //         println!(
+            //             "Hedge order after partially filling closed: {:?}",
+            //             closed_order
+            //         );
+            //     } else {
+            //         println!("Failed to close hedge order");
+            //     }
+            // }
+            //
+            // if let Some(closed_order) = close_position_with_retry(
+            //     client,
+            //     signer,
+            //     &hedge_config.initial_asset_id,
+            //     hedge_config.close_size,
+            //     30,
+            //     &hedge_config.asset
+            // )
+            // .await
+            // {
+            //     println!("Initial position closed after sl: {:?}", closed_order);
+            //     return Ok(-1);
+            // } else {
+            //     println!("Failed to close initial position");
+            //     return Ok(0);
+            // }
         }
     }
 }
@@ -479,10 +550,11 @@ pub async fn close_position_by_market(
 pub async fn place_hedge_order(
     client: &Arc<Client<Authenticated<Normal>>>,
     signer: &LocalSigner<SigningKey>,
-    token_id: String,
+    token_id: &String,
     order_size: Decimal,
     price: Decimal,
     asset: &Asset,
+    order_type: OrderType,
 ) -> polymarket_client_sdk::Result<OrderResponse> {
     HEDGE_ORDERS_TOTAL
         .with_label_values(&[asset.to_string().as_str()])
@@ -490,11 +562,11 @@ pub async fn place_hedge_order(
 
     let order = client
         .limit_order()
-        .token_id(&token_id)
+        .token_id(token_id)
         .size(order_size)
         .price(price)
         .side(Side::Buy)
-        .order_type(OrderType::GTC)
+        .order_type(order_type)
         .build()
         .await?;
 
@@ -507,7 +579,7 @@ pub async fn place_hedge_order(
     .await?;
 
     Ok(OrderResponse {
-        token_id: token_id,
+        token_id: token_id.to_string(),
         order_id: response[0].order_id.clone(),
     })
 }
@@ -575,7 +647,7 @@ pub async fn get_asset_price(
 ) -> polymarket_client_sdk::Result<PriceResponse> {
     let price_request = PriceRequestBuilder::default()
         .token_id(token_id)
-        .side(Side::Sell)
+        .side(Side::Buy)
         .build()?;
 
     timed_request("polymarket", "price", client.price(&price_request)).await
