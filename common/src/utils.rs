@@ -371,6 +371,7 @@ pub async fn manage_position_after_match(
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
             println!("Hedge order canceled");
+            let mut partially_filled = Decimal::zero();
             loop {
                 let current_second_asset_price = timed_request(
                     "polymarket",
@@ -381,7 +382,8 @@ pub async fn manage_position_after_match(
                 .price;
                 let closing_hedge_size = normalized_size(
                     (hedge_config.close_size * hedge_config.initial_entry_price)
-                        / (Decimal::ONE - current_second_asset_price),
+                        / (Decimal::ONE - current_second_asset_price)
+                        - partially_filled,
                     Decimal::zero(),
                 );
                 let hedge_order: OrderResponse = timed_request(
@@ -416,6 +418,15 @@ pub async fn manage_position_after_match(
                         client.cancel_order(hedge_config.second_order_id.as_str()),
                     )
                     .await?;
+                    sleep(Duration::from_secs(5)).await;
+                    let hedge_order_status: OpenOrderResponse = get_order_with_retry(
+                        client,
+                        hedge_order.order_id.as_str(),
+                        20,
+                        &hedge_config.asset,
+                    )
+                    .await?;
+                    partially_filled += hedge_order_status.size_matched;
                 }
             }
 
