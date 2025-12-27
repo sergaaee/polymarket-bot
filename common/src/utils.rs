@@ -354,7 +354,7 @@ pub async fn manage_position_after_match(
             return Ok(1);
         }
         sleep(Duration::from_secs(1)).await;
-        if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, 60) {
+        if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, 600) {
             STOP_LOSS_TOTAL
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
@@ -386,6 +386,9 @@ pub async fn manage_position_after_match(
                         - partially_filled,
                     Decimal::zero(),
                 );
+                if closing_hedge_size.is_zero() {
+                    return Ok(1);
+                }
                 let hedge_order: OrderResponse = timed_request(
                     "polymarket",
                     "place_hedge_order",

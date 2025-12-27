@@ -125,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
                     println!("Opened positions: {:?}", orders);
                     let first_order: OrderResponse = orders[0].clone();
                     let second_order: OrderResponse = orders[1].clone();
-                    sleep(Duration::from_secs(10)).await;
+                    sleep(Duration::from_secs(5)).await;
                     loop {
                         sleep(Duration::from_secs(1)).await;
                         let first_order_id = first_order.order_id.clone();
