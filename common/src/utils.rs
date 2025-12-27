@@ -354,7 +354,7 @@ pub async fn manage_position_after_match(
             return Ok(1);
         }
         sleep(Duration::from_secs(1)).await;
-        if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, 300) {
+        if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, 150) {
             STOP_LOSS_TOTAL
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
