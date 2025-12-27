@@ -379,9 +379,11 @@ pub async fn manage_position_after_match(
                 )
                 .await?
                 .price;
-                let closing_hedge_size = (hedge_config.close_size
-                    * hedge_config.initial_entry_price)
-                    / (Decimal::ONE - current_second_asset_price);
+                let closing_hedge_size = normalized_size(
+                    (hedge_config.close_size * hedge_config.initial_entry_price)
+                        / (Decimal::ONE - current_second_asset_price),
+                    Decimal::zero(),
+                );
                 let hedge_order: OrderResponse = timed_request(
                     "polymarket",
                     "place_hedge_order",
