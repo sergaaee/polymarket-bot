@@ -1,9 +1,8 @@
-use std::env;
 use alloy::signers::Signer as _;
 use alloy::signers::local::LocalSigner;
 use alloy_primitives::Address;
+use std::env;
 
-use axum::{Router, routing::get};
 use common::*;
 use polymarket_client_sdk::clob::{Client, Config};
 use polymarket_client_sdk::types::SignatureType;
@@ -11,12 +10,9 @@ use polymarket_client_sdk::{POLYGON, PRIVATE_KEY_VAR};
 use prometheus::{Encoder, TextEncoder};
 use reqwest::Client as http_client;
 use rust_decimal::Decimal;
-use std::net::SocketAddr;
 use std::str::FromStr as _;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpListener;
-use tokio::task;
 use tokio::time::sleep;
 
 fn get_metrics_port() -> u16 {
@@ -52,7 +48,6 @@ fn start_metrics_server(port: u16) {
     });
 }
 
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
@@ -71,13 +66,18 @@ async fn main() -> anyhow::Result<()> {
     let hedge_enter_price = std::env::var("HEDGE_ENTER_PRICE").expect("Need a hedge enter price");
     let hedge_enter_price = Decimal::from_str_exact(hedge_enter_price.as_str())
         .expect("Hedge enter price must be a valid decimal number");
-    let max_loss = std::env::var("MAX_LOSS").expect("Need a max loss");
-    let max_loss = Decimal::from_str_exact(max_loss.as_str())
-        .expect("Max loss must be a valid decimal number");
-    let timing: u32 = std::env::var("TIMING")
-        .expect("Need a timing")
-        .parse()
-        .expect("TIMING must be an integer");
+    let dont_allow_trade_before = std::env::var("DONT_ALLOW_TRADE_BEFORE")
+        .expect("Need a time to stop trading")
+        .parse::<i64>()
+        .expect("DONT_ALLOW_TRADE_BEFORE must be i64");
+    let dont_allow_holding_before = std::env::var("DONT_ALLOW_HOLDING_BEFORE")
+        .expect("Need a time to stop holding")
+        .parse::<i64>()
+        .expect("DONT_ALLOW_HOLDING_BEFORE must be i64");
+    let stop_loss_after = std::env::var("STOP_LOSS_AFTER")
+        .expect("Need a stop loss after")
+        .parse::<i64>()
+        .expect("STOP_LOSS_AFTER must be i64");
     let address = Address::parse_checksummed(funder_addr, None).expect("valid checksum");
     let http_client = http_client::new();
     let signer = LocalSigner::from_str(&private_key)?.with_chain_id(Some(POLYGON));
@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         let timestamp = nearest_quarter_hour();
-        if !allow_trade(timestamp, 90) {
+        if !allow_trade(timestamp, &dont_allow_trade_before) {
             println!("Not time to trade already, sleeping for 30 seconds");
             sleep(Duration::from_secs(30)).await;
             continue;
@@ -129,18 +129,28 @@ async fn main() -> anyhow::Result<()> {
                     println!("Opened positions: {:?}", orders);
                     let first_order: OrderResponse = orders[0].clone();
                     let second_order: OrderResponse = orders[1].clone();
-                    sleep(Duration::from_secs(10)).await;
+                    sleep(Duration::from_secs(5)).await;
                     loop {
                         sleep(Duration::from_secs(1)).await;
                         let first_order_id = first_order.order_id.clone();
                         let second_order_id = second_order.order_id.clone();
-                        let first_order =
-                            get_order_with_retry(&client, &first_order_id.as_str(), 10, &Asset::XRP).await?;
-                        let second_order =
-                            get_order_with_retry(&client, &second_order_id.as_str(), 10, &Asset::XRP).await?;
+                        let first_order = get_order_with_retry(
+                            &client,
+                            &first_order_id.as_str(),
+                            10,
+                            &Asset::XRP,
+                        )
+                            .await?;
+                        let second_order = get_order_with_retry(
+                            &client,
+                            &second_order_id.as_str(),
+                            10,
+                            &Asset::XRP,
+                        )
+                            .await?;
 
                         // if left lest than grace_seconds till market open we don't want to wait anymore to open positions
-                        let is_holding_allowed = allow_trade(timestamp, 10);
+                        let is_holding_allowed = allow_trade(timestamp, &dont_allow_holding_before);
                         println!(
                             "Holding allowed: {}, first: {}, second: {}",
                             is_holding_allowed, first_order.status, second_order.status
@@ -154,6 +164,7 @@ async fn main() -> anyhow::Result<()> {
                                 &signer,
                                 &second_order_id,
                                 HedgeConfig {
+                                    stop_loss_after,
                                     second_order_id: second_order_id.clone(),
                                     hedge_asset_id: tokens.second_asset_id.clone(),
                                     initial_asset_id: tokens.first_asset_id.clone(),
@@ -182,6 +193,7 @@ async fn main() -> anyhow::Result<()> {
                                 &signer,
                                 &first_order_id,
                                 HedgeConfig {
+                                    stop_loss_after,
                                     second_order_id: first_order_id.clone(),
                                     hedge_asset_id: tokens.first_asset_id.clone(),
                                     initial_asset_id: tokens.second_asset_id.clone(),
@@ -218,6 +230,7 @@ async fn main() -> anyhow::Result<()> {
                                     &signer,
                                     &first_order,
                                     HedgeConfig {
+                                        stop_loss_after,
                                         second_order_id: second_order_id.clone(),
                                         hedge_asset_id: tokens.second_asset_id.clone(),
                                         initial_asset_id: tokens.first_asset_id.clone(),
@@ -242,6 +255,7 @@ async fn main() -> anyhow::Result<()> {
                                     &signer,
                                     &second_order,
                                     HedgeConfig {
+                                        stop_loss_after,
                                         second_order_id: first_order_id.clone(),
                                         hedge_asset_id: tokens.first_asset_id.clone(),
                                         initial_asset_id: tokens.second_asset_id.clone(),

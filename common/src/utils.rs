@@ -233,6 +233,7 @@ pub async fn prevent_holding_position(
         &first_order_size
     );
     let true_hedge_config = HedgeConfig {
+        stop_loss_after: prevent_holding_config.hedge_config.stop_loss_after,
         second_order_id: prevent_holding_config.hedge_config.second_order_id,
         hedge_asset_id: prevent_holding_config.hedge_config.hedge_asset_id,
         initial_asset_id: prevent_holding_config.hedge_config.initial_asset_id,
@@ -321,7 +322,7 @@ pub async fn manage_position_after_match(
             return Ok(1);
         }
         sleep(Duration::from_secs(1)).await;
-        if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, 15) {
+        if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, hedge_config.stop_loss_after) {
             STOP_LOSS_TOTAL
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
@@ -391,7 +392,7 @@ pub async fn manage_position_after_match(
 }
 
 // if before market start left <= grace_seconds, we can't open new positions
-pub fn allow_trade(market_timestamp: i64, grace_seconds: i64) -> bool {
+pub fn allow_trade(market_timestamp: i64, grace_seconds: &i64) -> bool {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time went backwards")
