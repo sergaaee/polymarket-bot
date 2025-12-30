@@ -336,7 +336,7 @@ pub async fn manage_position_after_match(
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
             println!("Hedge order canceled");
-            sleep(Duration::from_secs(1)).await;
+            sleep(Duration::from_secs(5)).await;
             let hedge_order_status: OpenOrderResponse =
                 get_order_with_retry(client, hedge_order.order_id.as_str(), 10, &hedge_config.asset).await?;
             if hedge_order_status.size_matched > Decimal::zero()
