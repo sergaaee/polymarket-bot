@@ -11,11 +11,7 @@ use alloy::signers::local::LocalSigner;
 use chrono::{Local, TimeZone, Timelike};
 use polymarket_client_sdk::auth::Normal;
 use polymarket_client_sdk::clob::Client;
-use polymarket_client_sdk::clob::state::Authenticated;
-use polymarket_client_sdk::types::{
-    Amount, OpenOrderResponse, OrderType, PostOrderResponse, PriceRequestBuilder, PriceResponse,
-    Side,
-};
+use polymarket_client_sdk::clob::types::{Amount, OpenOrderResponse, OrderStatusType, OrderType, PostOrderResponse, PriceRequest, PriceRequestBuilder, PriceResponse, Side};
 use reqwest::Client as http_client;
 use rust_decimal::prelude::Zero;
 use rust_decimal::{Decimal, RoundingStrategy};
@@ -23,6 +19,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use polymarket_client_sdk::auth::state::Authenticated;
 use tokio::time::sleep;
 
 pub async fn timed_request<F, T>(service: &str, method: &str, f: F) -> T
@@ -264,7 +261,7 @@ pub async fn manage_position_after_match(
 ) -> polymarket_client_sdk::Result<i8> {
     let second_order_status: OpenOrderResponse =
         get_order_with_retry(client, hedge_config.second_order_id.as_str(), 30, &hedge_config.asset).await?;
-    if second_order_status.status != "CANCELED" {
+    if second_order_status.status != OrderStatusType::Canceled {
         println!("Cancelling second order...");
         ORDERS_CANCELLED_TOTAL
             .with_label_values(&[&hedge_config.asset.to_string()])
@@ -313,7 +310,7 @@ pub async fn manage_position_after_match(
         let hedge_order_status: OpenOrderResponse =
             get_order_with_retry(client, hedge_order.order_id.as_str(), 20, &hedge_config.asset).await?;
         println!("Hedge order status: {:?}", hedge_order_status.status);
-        if hedge_order_status.status == "MATCHED" {
+        if hedge_order_status.status == OrderStatusType::Matched {
             HEDGE_ORDERS_MATCHED_TOTAL
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
@@ -322,7 +319,7 @@ pub async fn manage_position_after_match(
             return Ok(1);
         }
         sleep(Duration::from_secs(1)).await;
-        if hedge_order_status.status != "MATCHED" && allow_stop_loss(hedge_config.timestamp, hedge_config.stop_loss_after) {
+        if hedge_order_status.status != OrderStatusType::Matched && allow_stop_loss(hedge_config.timestamp, hedge_config.stop_loss_after) {
             STOP_LOSS_TOTAL
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
@@ -574,10 +571,10 @@ pub async fn get_asset_price(
     client: &Client<Authenticated<Normal>>,
     token_id: &str,
 ) -> polymarket_client_sdk::Result<PriceResponse> {
-    let price_request = PriceRequestBuilder::default()
+    let price_request = PriceRequest::builder()
         .token_id(token_id)
         .side(Side::Sell)
-        .build()?;
+        .build();
 
     timed_request("polymarket", "price", client.price(&price_request)).await
 }

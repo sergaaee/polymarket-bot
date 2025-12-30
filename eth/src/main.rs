@@ -5,7 +5,7 @@ use std::env;
 
 use common::*;
 use polymarket_client_sdk::clob::{Client, Config};
-use polymarket_client_sdk::types::SignatureType;
+use polymarket_client_sdk::clob::types::{OrderStatusType, SignatureType};
 use polymarket_client_sdk::{POLYGON, PRIVATE_KEY_VAR};
 use prometheus::{Encoder, TextEncoder};
 use reqwest::Client as http_client;
@@ -156,7 +156,7 @@ async fn main() -> anyhow::Result<()> {
                             is_holding_allowed, first_order.status, second_order.status
                         );
 
-                        if first_order.status == "MATCHED" {
+                        if first_order.status == OrderStatusType::Matched {
                             println!("First order matched: {:?}", first_order);
                             let close_size = normalized_size(first_order.size_matched, order_size);
                             let result = handle_matched(
@@ -185,7 +185,7 @@ async fn main() -> anyhow::Result<()> {
                             break;
                         }
 
-                        if second_order.status == "MATCHED" {
+                        if second_order.status == OrderStatusType::Matched {
                             println!("Second order matched: {:?}", second_order);
                             let close_size = normalized_size(second_order.size_matched, order_size);
                             let result = handle_matched(
@@ -213,7 +213,7 @@ async fn main() -> anyhow::Result<()> {
                             }
                             break;
                         }
-                        if first_order.status == "CANCELED" && second_order.status == "CANCELED" {
+                        if first_order.status == OrderStatusType::Canceled && second_order.status == OrderStatusType::Canceled {
                             println!(
                                 "Orders were canceled: first: {:?}, second: {:?}",
                                 first_order, second_order
@@ -223,7 +223,7 @@ async fn main() -> anyhow::Result<()> {
 
                         // --- PREVENT HOLDING ---
                         if !is_holding_allowed {
-                            if first_order.status == "LIVE" {
+                            if first_order.status == OrderStatusType::Live {
                                 let size = normalized_size(first_order.size_matched, order_size);
                                 let exited = handle_live_order(
                                     &client,
@@ -248,7 +248,7 @@ async fn main() -> anyhow::Result<()> {
                                 }
                             }
 
-                            if second_order.status == "LIVE" {
+                            if second_order.status == OrderStatusType::Live {
                                 let size = normalized_size(second_order.size_matched, order_size);
                                 let exited = handle_live_order(
                                     &client,
