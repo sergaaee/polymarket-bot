@@ -10,8 +10,12 @@ use alloy::signers::k256::ecdsa::signature::SignerMut;
 use alloy::signers::local::LocalSigner;
 use chrono::{DateTime, Local, TimeZone, Timelike};
 use polymarket_client_sdk::auth::Normal;
+use polymarket_client_sdk::auth::state::Authenticated;
 use polymarket_client_sdk::clob::Client;
-use polymarket_client_sdk::clob::types::{Amount, OpenOrderResponse, OrderStatusType, OrderType, PostOrderResponse, PriceRequest, PriceRequestBuilder, PriceResponse, Side};
+use polymarket_client_sdk::clob::types::{
+    Amount, OpenOrderResponse, OrderStatusType, OrderType, PostOrderResponse, PriceRequest,
+    PriceRequestBuilder, PriceResponse, Side,
+};
 use reqwest::Client as http_client;
 use rust_decimal::prelude::Zero;
 use rust_decimal::{Decimal, RoundingStrategy};
@@ -19,7 +23,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use polymarket_client_sdk::auth::state::Authenticated;
 use tokio::time::sleep;
 
 pub async fn timed_request<F, T>(service: &str, method: &str, f: F) -> T
@@ -71,7 +74,7 @@ pub async fn close_position_with_retry(
     asset_id: &String,
     close_size: Decimal,
     max_retries: usize,
-    asset: &Asset
+    asset: &Asset,
 ) -> Option<PostOrderResponse> {
     let mut attempt = 0;
 
@@ -87,7 +90,9 @@ pub async fn close_position_with_retry(
             }
             Some(err) => {
                 attempt += 1;
-                RETRIES_TOTAL.with_label_values(&[asset.to_string().as_str(), "close_position"]).inc();
+                RETRIES_TOTAL
+                    .with_label_values(&[asset.to_string().as_str(), "close_position"])
+                    .inc();
 
                 if attempt >= max_retries {
                     return None;
@@ -107,7 +112,7 @@ pub async fn get_order_with_retry(
     client: &Arc<Client<Authenticated<Normal>>>,
     order_id: &str,
     max_retries: usize,
-    asset: &Asset
+    asset: &Asset,
 ) -> polymarket_client_sdk::Result<OpenOrderResponse> {
     let mut attempt = 0;
 
@@ -117,7 +122,9 @@ pub async fn get_order_with_retry(
 
             Err(err) => {
                 attempt += 1;
-                RETRIES_TOTAL.with_label_values(&[asset.to_string().as_str(), "get_order"]).inc();
+                RETRIES_TOTAL
+                    .with_label_values(&[asset.to_string().as_str(), "get_order"])
+                    .inc();
 
                 if attempt >= max_retries {
                     return Err(err);
@@ -219,8 +226,13 @@ pub async fn prevent_holding_position(
     .await?;
     println!("Cancelled first order, closing now");
 
-    let first_order_status: OpenOrderResponse =
-        get_order_with_retry(&client, &prevent_holding_config.order_id.as_str(), 30, &prevent_holding_config.hedge_config.asset).await?;
+    let first_order_status: OpenOrderResponse = get_order_with_retry(
+        &client,
+        &prevent_holding_config.order_id.as_str(),
+        30,
+        &prevent_holding_config.hedge_config.asset,
+    )
+    .await?;
     let first_order_size = normalized_size(
         first_order_status.size_matched,
         prevent_holding_config.hedge_config.hedge_size,
@@ -259,8 +271,13 @@ pub async fn manage_position_after_match(
     signer: &LocalSigner<SigningKey>,
     hedge_config: HedgeConfig,
 ) -> polymarket_client_sdk::Result<i8> {
-    let second_order_status: OpenOrderResponse =
-        get_order_with_retry(client, hedge_config.second_order_id.as_str(), 30, &hedge_config.asset).await?;
+    let second_order_status: OpenOrderResponse = get_order_with_retry(
+        client,
+        hedge_config.second_order_id.as_str(),
+        30,
+        &hedge_config.asset,
+    )
+    .await?;
     if second_order_status.status != OrderStatusType::Canceled {
         println!("Cancelling second order...");
         ORDERS_CANCELLED_TOTAL
@@ -275,8 +292,13 @@ pub async fn manage_position_after_match(
         .await?;
         println!("Second order cancelled");
     }
-    let second_order_status: OpenOrderResponse =
-        get_order_with_retry(client, hedge_config.second_order_id.as_str(), 30, &hedge_config.asset).await?;
+    let second_order_status: OpenOrderResponse = get_order_with_retry(
+        client,
+        hedge_config.second_order_id.as_str(),
+        30,
+        &hedge_config.asset,
+    )
+    .await?;
     let mut hedge_size = hedge_config.hedge_size;
     if second_order_status.size_matched > Decimal::zero() {
         ORDERS_PARTIAL_TOTAL
@@ -304,11 +326,17 @@ pub async fn manage_position_after_match(
     )
     .await?;
     println!("Hedge order placed: {:?}", hedge_order);
+    let open_timestamp = Local::now().timestamp();
     sleep(Duration::from_secs(10)).await;
 
     loop {
-        let hedge_order_status: OpenOrderResponse =
-            get_order_with_retry(client, hedge_order.order_id.as_str(), 20, &hedge_config.asset).await?;
+        let hedge_order_status: OpenOrderResponse = get_order_with_retry(
+            client,
+            hedge_order.order_id.as_str(),
+            20,
+            &hedge_config.asset,
+        )
+        .await?;
         println!("Hedge order status: {:?}", hedge_order_status.status);
         if hedge_order_status.status == OrderStatusType::Matched {
             HEDGE_ORDERS_MATCHED_TOTAL
@@ -319,7 +347,9 @@ pub async fn manage_position_after_match(
             return Ok(1);
         }
         sleep(Duration::from_secs(1)).await;
-        if hedge_order_status.status != OrderStatusType::Matched && allow_stop_loss(hedge_config.timestamp, hedge_config.stop_loss_after) {
+        if hedge_order_status.status != OrderStatusType::Matched
+            && allow_stop_loss(open_timestamp, hedge_config.stop_loss_after)
+        {
             STOP_LOSS_TOTAL
                 .with_label_values(&[&hedge_config.asset.to_string()])
                 .inc();
@@ -337,8 +367,13 @@ pub async fn manage_position_after_match(
                 .inc();
             println!("Hedge order canceled");
             sleep(Duration::from_secs(5)).await;
-            let hedge_order_status: OpenOrderResponse =
-                get_order_with_retry(client, hedge_order.order_id.as_str(), 10, &hedge_config.asset).await?;
+            let hedge_order_status: OpenOrderResponse = get_order_with_retry(
+                client,
+                hedge_order.order_id.as_str(),
+                10,
+                &hedge_config.asset,
+            )
+            .await?;
             if hedge_order_status.size_matched > Decimal::zero()
                 && hedge_order_status.size_matched != hedge_size
             {
@@ -355,7 +390,7 @@ pub async fn manage_position_after_match(
                     &hedge_config.hedge_asset_id,
                     closing_hedge_size,
                     30,
-                    &hedge_config.asset
+                    &hedge_config.asset,
                 )
                 .await
                 {
@@ -374,7 +409,7 @@ pub async fn manage_position_after_match(
                 &hedge_config.initial_asset_id,
                 hedge_config.close_size,
                 30,
-                &hedge_config.asset
+                &hedge_config.asset,
             )
             .await
             {
@@ -398,11 +433,11 @@ pub fn allow_trade(market_timestamp: i64, grace_seconds: &i64) -> bool {
     now <= market_timestamp - grace_seconds
 }
 
-pub fn nearest_quarter_hour() -> i64 {
+pub fn current_quarter_hour() -> i64 {
     let now = Local::now();
 
     let minute = now.minute();
-    let next_quarter_minute = ((minute / 15) + 1) * 15;
+    let next_quarter_minute = (minute / 15) * 15;
 
     let quarter = if next_quarter_minute < 60 {
         now.with_minute(next_quarter_minute)
@@ -422,27 +457,6 @@ pub fn nearest_quarter_hour() -> i64 {
     };
 
     quarter.timestamp()
-}
-
-pub fn next_half_hour() -> i64 {
-    let now: DateTime<Local> = Local::now();
-
-    let minute = now.minute();
-    let current_quarter_minute = (minute / 15) * 15;
-
-    // Начало текущего 15-минутного блока
-    let base = now
-        .with_minute(current_quarter_minute)
-        .unwrap()
-        .with_second(0)
-        .unwrap()
-        .with_nanosecond(0)
-        .unwrap();
-
-    // Через один интервал = +30 минут
-    let target = base + Duration::from_mins(30);
-
-    target.timestamp()
 }
 
 pub async fn get_tokens(

@@ -4,8 +4,8 @@ use alloy_primitives::Address;
 use std::env;
 
 use common::*;
-use polymarket_client_sdk::clob::{Client, Config};
 use polymarket_client_sdk::clob::types::{OrderStatusType, SignatureType};
+use polymarket_client_sdk::clob::{Client, Config};
 use polymarket_client_sdk::{POLYGON, PRIVATE_KEY_VAR};
 use prometheus::{Encoder, TextEncoder};
 use reqwest::Client as http_client;
@@ -96,12 +96,7 @@ async fn main() -> anyhow::Result<()> {
     let mut loss_count: u32 = 0;
 
     loop {
-        let timestamp = next_half_hour();
-        if !allow_trade(timestamp, &dont_allow_trade_before) {
-            println!("Not time to trade already, sleeping for 30 seconds");
-            sleep(Duration::from_secs(30)).await;
-            continue;
-        }
+        let timestamp = current_quarter_hour();
         let tokens = get_tokens(&http_client, &timestamp, Asset::SOL)
             .await
             .expect(
@@ -150,11 +145,6 @@ async fn main() -> anyhow::Result<()> {
                             .await?;
 
                         // if left lest than grace_seconds till market open we don't want to wait anymore to open positions
-                        let is_holding_allowed = allow_trade(timestamp, &dont_allow_holding_before);
-                        println!(
-                            "Holding allowed: {}, first: {}, second: {}",
-                            is_holding_allowed, first_order.status, second_order.status
-                        );
 
                         if first_order.status == OrderStatusType::Matched {
                             println!("First order matched: {:?}", first_order);
@@ -213,65 +203,14 @@ async fn main() -> anyhow::Result<()> {
                             }
                             break;
                         }
-                        if first_order.status == OrderStatusType::Canceled && second_order.status == OrderStatusType::Canceled {
+                        if first_order.status == OrderStatusType::Canceled
+                            && second_order.status == OrderStatusType::Canceled
+                        {
                             println!(
                                 "Orders were canceled: first: {:?}, second: {:?}",
                                 first_order, second_order
                             );
                             break;
-                        }
-
-                        // --- PREVENT HOLDING ---
-                        if !is_holding_allowed {
-                            if first_order.status == OrderStatusType::Live {
-                                let size = normalized_size(first_order.size_matched, order_size);
-                                let exited = handle_live_order(
-                                    &client,
-                                    &signer,
-                                    &first_order,
-                                    HedgeConfig {
-                                        stop_loss_after,
-                                        second_order_id: second_order_id.clone(),
-                                        hedge_asset_id: tokens.second_asset_id.clone(),
-                                        initial_asset_id: tokens.first_asset_id.clone(),
-                                        hedge_size: size,
-                                        close_size: size,
-                                        hedge_enter_price,
-                                        timestamp,
-                                        asset: Asset::SOL,
-                                    },
-                                    &first_order_id,
-                                )
-                                    .await?;
-                                if exited {
-                                    break 'open_position;
-                                }
-                            }
-
-                            if second_order.status == OrderStatusType::Live {
-                                let size = normalized_size(second_order.size_matched, order_size);
-                                let exited = handle_live_order(
-                                    &client,
-                                    &signer,
-                                    &second_order,
-                                    HedgeConfig {
-                                        stop_loss_after,
-                                        second_order_id: first_order_id.clone(),
-                                        hedge_asset_id: tokens.first_asset_id.clone(),
-                                        initial_asset_id: tokens.second_asset_id.clone(),
-                                        hedge_size: size,
-                                        close_size: size,
-                                        hedge_enter_price,
-                                        timestamp,
-                                        asset: Asset::SOL,
-                                    },
-                                    &second_order_id,
-                                )
-                                    .await?;
-                                if exited {
-                                    break 'open_position;
-                                }
-                            }
                         }
                     }
                     break 'open_position;
