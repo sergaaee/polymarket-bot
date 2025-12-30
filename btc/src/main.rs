@@ -94,9 +94,15 @@ async fn main() -> anyhow::Result<()> {
     println!("Client setup ok?: {ok}");
     let mut win_count: u32 = 0;
     let mut loss_count: u32 = 0;
+    let mut completed_timesteps: Vec<i64> = vec![];
 
     loop {
         let timestamp = current_quarter_hour();
+        if completed_timesteps.contains(&timestamp) {
+            println!("Already completed timestamp: {}", timestamp);
+            sleep(Duration::from_secs(1)).await;
+            continue;
+        }
         let tokens = get_tokens(&http_client, &timestamp, Asset::BTC)
             .await
             .expect(
@@ -172,6 +178,7 @@ async fn main() -> anyhow::Result<()> {
                                 -1 => loss_count += 1,
                                 _ => {}
                             }
+                            completed_timesteps.push(timestamp.clone());
                             break;
                         }
 
@@ -201,6 +208,7 @@ async fn main() -> anyhow::Result<()> {
                                 -1 => loss_count += 1,
                                 _ => {}
                             }
+                            completed_timesteps.push(timestamp.clone());
                             break;
                         }
                         if first_order.status == OrderStatusType::Canceled
@@ -210,6 +218,7 @@ async fn main() -> anyhow::Result<()> {
                                 "Orders were canceled: first: {:?}, second: {:?}",
                                 first_order, second_order
                             );
+                            completed_timesteps.push(timestamp.clone());
                             break;
                         }
                     }
