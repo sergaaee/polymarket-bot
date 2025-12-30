@@ -96,7 +96,7 @@ async fn main() -> anyhow::Result<()> {
     let mut loss_count: u32 = 0;
 
     loop {
-        let timestamp = nearest_quarter_hour();
+        let timestamp = next_half_hour();
         if !allow_trade(timestamp, &dont_allow_trade_before) {
             println!("Not time to trade already, sleeping for 30 seconds");
             sleep(Duration::from_secs(30)).await;

@@ -8,7 +8,7 @@ use crate::{HedgeConfig, MarketApiResponse, MarketResponse, PreventHoldingConfig
 use alloy::signers::k256::ecdsa::SigningKey;
 use alloy::signers::k256::ecdsa::signature::SignerMut;
 use alloy::signers::local::LocalSigner;
-use chrono::{Local, TimeZone, Timelike};
+use chrono::{DateTime, Local, TimeZone, Timelike};
 use polymarket_client_sdk::auth::Normal;
 use polymarket_client_sdk::clob::Client;
 use polymarket_client_sdk::clob::types::{Amount, OpenOrderResponse, OrderStatusType, OrderType, PostOrderResponse, PriceRequest, PriceRequestBuilder, PriceResponse, Side};
@@ -422,6 +422,27 @@ pub fn nearest_quarter_hour() -> i64 {
     };
 
     quarter.timestamp()
+}
+
+pub fn next_half_hour() -> i64 {
+    let now: DateTime<Local> = Local::now();
+
+    let minute = now.minute();
+    let current_quarter_minute = (minute / 15) * 15;
+
+    // Начало текущего 15-минутного блока
+    let base = now
+        .with_minute(current_quarter_minute)
+        .unwrap()
+        .with_second(0)
+        .unwrap()
+        .with_nanosecond(0)
+        .unwrap();
+
+    // Через один интервал = +30 минут
+    let target = base + Duration::from_mins(30);
+
+    target.timestamp()
 }
 
 pub async fn get_tokens(
