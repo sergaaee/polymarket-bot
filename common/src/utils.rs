@@ -18,7 +18,7 @@ use polymarket_client_sdk::clob::types::{
 };
 use reqwest::Client as http_client;
 use rust_decimal::prelude::Zero;
-use rust_decimal::{Decimal, RoundingStrategy};
+use rust_decimal::{Decimal, RoundingStrategy, dec};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -144,7 +144,6 @@ pub async fn get_order_with_retry(
 pub async fn handle_matched(
     client: &Arc<Client<Authenticated<Normal>>>,
     signer: &LocalSigner<SigningKey>,
-    cancel_order_id: &str,
     hedge_config: HedgeConfig,
 ) -> polymarket_client_sdk::Result<i8> {
     ORDERS_TOTAL
@@ -157,14 +156,7 @@ pub async fn handle_matched(
     ORDERS_MATCHED_TOTAL
         .with_label_values(&[&hedge_config.asset.to_string()])
         .inc();
-
-    println!("Cancelling another order...");
-    timed_request(
-        "polymarket",
-        "cancel_order",
-        client.cancel_order(cancel_order_id),
-    )
-    .await?;
+    
     manage_position_after_match(client, signer, hedge_config).await
 }
 
@@ -243,7 +235,6 @@ pub async fn prevent_holding_position(
     );
     let true_hedge_config = HedgeConfig {
         stop_loss_after: prevent_holding_config.hedge_config.stop_loss_after,
-        second_order_id: prevent_holding_config.hedge_config.second_order_id,
         hedge_asset_id: prevent_holding_config.hedge_config.hedge_asset_id,
         initial_asset_id: prevent_holding_config.hedge_config.initial_asset_id,
         hedge_size: first_order_size,
@@ -508,59 +499,72 @@ pub async fn open_start_positions(
     order_size: Decimal,
     price: Decimal,
     tokens: MarketResponse,
-) -> polymarket_client_sdk::Result<Option<Vec<OrderResponse>>> {
-    let mut orders: Vec<OrderResponse> = vec![];
-    let first_order = client
-        .limit_order()
-        .token_id(&tokens.first_asset_id)
-        .size(order_size)
-        .price(price)
-        .side(Side::Buy)
-        .order_type(OrderType::GTC)
-        .build()
-        .await?;
+) -> polymarket_client_sdk::Result<Option<OrderResponse>> {
+    let first_asset_price = get_asset_price(client, &tokens.first_asset_id.as_str())
+        .await?
+        .price;
+    if first_asset_price >= Decimal::from_str_exact("0.6").unwrap() {
+        let first_order = client
+            .limit_order()
+            .token_id(&tokens.first_asset_id)
+            .size(order_size)
+            .price(price)
+            .side(Side::Buy)
+            .order_type(OrderType::GTC)
+            .build()
+            .await?;
 
-    let signed_order = client.sign(signer, first_order).await?;
-    let response = timed_request(
-        "polymarket",
-        "open_first_start_positions",
-        client.post_order(signed_order),
-    )
-    .await?;
-    orders.push(OrderResponse {
-        token_id: tokens.first_asset_id,
-        order_id: response[0].order_id.clone(),
-    });
+        let signed_order = client.sign(signer, first_order).await?;
+        let response = timed_request(
+            "polymarket",
+            "open_first_start_positions",
+            client.post_order(signed_order),
+        )
+        .await?;
+        if response[0].order_id != "" {
+            return Ok(Some(OrderResponse {
+                token_id: tokens.first_asset_id,
+                order_id: response[0].order_id.clone(),
+            }));
+        }
+    }
 
     sleep(Duration::from_secs(1)).await;
-
-    let second_order = client
-        .limit_order()
-        .token_id(&tokens.second_asset_id)
-        .size(order_size)
-        .price(price)
-        .side(Side::Buy)
-        .order_type(OrderType::GTC)
-        .build()
+    let second_asset_price = get_asset_price(client, &tokens.second_asset_id.as_str())
+        .await?
+        .price;
+    if second_asset_price >= Decimal::from_str_exact("0.6").unwrap() {
+        let second_order = client
+            .limit_order()
+            .token_id(&tokens.second_asset_id)
+            .size(order_size)
+            .price(price)
+            .side(Side::Buy)
+            .order_type(OrderType::GTC)
+            .build()
+            .await?;
+        let signed_order = client.sign(signer, second_order).await?;
+        let response = timed_request(
+            "polymarket",
+            "open_second_start_positions",
+            client.post_order(signed_order),
+        )
         .await?;
-
-    let signed_order = client.sign(signer, second_order).await?;
-    let response = timed_request(
-        "polymarket",
-        "open_second_start_positions",
-        client.post_order(signed_order),
-    )
-    .await?;
-    orders.push(OrderResponse {
-        token_id: tokens.second_asset_id,
-        order_id: response[0].order_id.clone(),
-    });
-
-    Ok(Some(orders))
+        if response[0].order_id == "" {
+            Ok(Some(OrderResponse {
+                token_id: tokens.second_asset_id,
+                order_id: response[0].order_id.clone(),
+            }))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
 }
 
 pub async fn get_asset_price(
-    client: &Client<Authenticated<Normal>>,
+    client: &Arc<Client<Authenticated<Normal>>>,
     token_id: &str,
 ) -> polymarket_client_sdk::Result<PriceResponse> {
     let price_request = PriceRequest::builder()

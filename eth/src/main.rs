@@ -126,29 +126,15 @@ async fn main() -> anyhow::Result<()> {
             )
                 .await
             {
-                Ok(Some(orders)) => {
-                    println!("Opened positions: {:?}", orders);
-                    let first_order: OrderResponse = orders[0].clone();
-                    let second_order: OrderResponse = orders[1].clone();
-                    sleep(Duration::from_secs(10)).await;
+                Ok(Some(order)) => {
+                    println!("Opened position: {:?}", order);
+                    sleep(Duration::from_secs(8)).await;
                     loop {
                         sleep(Duration::from_secs(1)).await;
-                        let first_order_id = first_order.order_id.clone();
-                        let second_order_id = second_order.order_id.clone();
-                        let first_order = get_order_with_retry(
-                            &client,
-                            &first_order_id.as_str(),
-                            20,
-                            &Asset::ETH,
-                        )
-                            .await?;
-                        let second_order = get_order_with_retry(
-                            &client,
-                            &second_order_id.as_str(),
-                            20,
-                            &Asset::ETH,
-                        )
-                            .await?;
+                        let order_id = order.order_id.clone();
+                        let first_order =
+                            get_order_with_retry(&client, &order_id.as_str(), 20, &Asset::ETH)
+                                .await?;
 
                         // if left lest than grace_seconds till market open we don't want to wait anymore to open positions
 
@@ -158,10 +144,8 @@ async fn main() -> anyhow::Result<()> {
                             let result = handle_matched(
                                 &client,
                                 &signer,
-                                &second_order_id,
                                 HedgeConfig {
                                     stop_loss_after,
-                                    second_order_id: second_order_id.clone(),
                                     hedge_asset_id: tokens.second_asset_id.clone(),
                                     initial_asset_id: tokens.first_asset_id.clone(),
                                     hedge_size: order_size,
@@ -178,46 +162,6 @@ async fn main() -> anyhow::Result<()> {
                                 -1 => loss_count += 1,
                                 _ => {}
                             }
-                            completed_timesteps.push(timestamp.clone());
-                            break;
-                        }
-
-                        if second_order.status == OrderStatusType::Matched {
-                            println!("Second order matched: {:?}", second_order);
-                            let close_size = normalized_size(second_order.size_matched, order_size);
-                            let result = handle_matched(
-                                &client,
-                                &signer,
-                                &first_order_id,
-                                HedgeConfig {
-                                    stop_loss_after,
-                                    second_order_id: first_order_id.clone(),
-                                    hedge_asset_id: tokens.first_asset_id.clone(),
-                                    initial_asset_id: tokens.second_asset_id.clone(),
-                                    hedge_size: order_size,
-                                    close_size,
-                                    hedge_enter_price,
-                                    timestamp,
-                                    asset: Asset::ETH,
-                                },
-                            )
-                                .await?;
-
-                            match result.signum() {
-                                1 => win_count += 1,
-                                -1 => loss_count += 1,
-                                _ => {}
-                            }
-                            completed_timesteps.push(timestamp.clone());
-                            break;
-                        }
-                        if first_order.status == OrderStatusType::Canceled
-                            && second_order.status == OrderStatusType::Canceled
-                        {
-                            println!(
-                                "Orders were canceled: first: {:?}, second: {:?}",
-                                first_order, second_order
-                            );
                             completed_timesteps.push(timestamp.clone());
                             break;
                         }
