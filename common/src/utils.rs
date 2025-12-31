@@ -271,51 +271,7 @@ pub async fn manage_position_after_match(
     signer: &LocalSigner<SigningKey>,
     hedge_config: HedgeConfig,
 ) -> polymarket_client_sdk::Result<i8> {
-    let second_order_status: OpenOrderResponse = get_order_with_retry(
-        client,
-        hedge_config.second_order_id.as_str(),
-        30,
-        &hedge_config.asset,
-    )
-    .await?;
-    if second_order_status.status != OrderStatusType::Canceled {
-        println!("Cancelling second order...");
-        ORDERS_CANCELLED_TOTAL
-            .with_label_values(&[&hedge_config.asset.to_string()])
-            .inc();
-
-        timed_request(
-            "polymarket",
-            "cancel_order",
-            client.cancel_order(hedge_config.second_order_id.as_str()),
-        )
-        .await?;
-        println!("Second order cancelled");
-    }
-    let second_order_status: OpenOrderResponse = get_order_with_retry(
-        client,
-        hedge_config.second_order_id.as_str(),
-        30,
-        &hedge_config.asset,
-    )
-    .await?;
-    let mut hedge_size = hedge_config.hedge_size;
-    if second_order_status.size_matched > Decimal::zero() {
-        ORDERS_PARTIAL_TOTAL
-            .with_label_values(&[&hedge_config.asset.to_string()])
-            .inc();
-
-        let closing_second_size = floor_dp(second_order_status.size_matched, 2);
-        println!(
-            "Second order partially matched with size: {}",
-            &closing_second_size
-        );
-        hedge_size = closing_second_size - hedge_config.hedge_size;
-        if hedge_size < Decimal::zero() {
-            hedge_size = hedge_config.hedge_size - closing_second_size;
-        }
-    }
-
+    let hedge_size = normalized_size(hedge_config.hedge_size, hedge_config.close_size);
     let hedge_order: OrderResponse = place_hedge_order(
         &client,
         &signer,
@@ -326,6 +282,7 @@ pub async fn manage_position_after_match(
     )
     .await?;
     println!("Hedge order placed: {:?}", hedge_order);
+
     let open_timestamp = Local::now().timestamp();
     sleep(Duration::from_secs(10)).await;
 
