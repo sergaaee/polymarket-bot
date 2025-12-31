@@ -115,6 +115,8 @@ async fn main() -> anyhow::Result<()> {
             loss_count,
             Asset::ETH
         );
+        let mut hedge_asset_id;
+        let mut initial_asset_id;
 
         'open_position: loop {
             match open_start_positions(
@@ -127,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
                 .await
             {
                 Ok(Some(order)) => {
-                    println!("Opened position: {:?}", order);
+                    println!("Opened order: {:?}", order);
                     sleep(Duration::from_secs(8)).await;
                     loop {
                         sleep(Duration::from_secs(1)).await;
@@ -135,6 +137,13 @@ async fn main() -> anyhow::Result<()> {
                         let first_order =
                             get_order_with_retry(&client, &order_id.as_str(), 20, &Asset::ETH)
                                 .await?;
+                        if order.token_id == tokens.first_asset_id.clone() {
+                            initial_asset_id = tokens.first_asset_id.clone();
+                            hedge_asset_id = tokens.second_asset_id.clone();
+                        } else {
+                            initial_asset_id = tokens.second_asset_id.clone();
+                            hedge_asset_id = tokens.first_asset_id.clone();
+                        }
 
                         // if left lest than grace_seconds till market open we don't want to wait anymore to open positions
 
@@ -146,8 +155,8 @@ async fn main() -> anyhow::Result<()> {
                                 &signer,
                                 HedgeConfig {
                                     stop_loss_after,
-                                    hedge_asset_id: tokens.second_asset_id.clone(),
-                                    initial_asset_id: tokens.first_asset_id.clone(),
+                                    hedge_asset_id,
+                                    initial_asset_id,
                                     hedge_size: order_size,
                                     close_size,
                                     hedge_enter_price,
