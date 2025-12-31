@@ -156,7 +156,7 @@ pub async fn handle_matched(
     ORDERS_MATCHED_TOTAL
         .with_label_values(&[&hedge_config.asset.to_string()])
         .inc();
-    
+
     manage_position_after_match(client, signer, hedge_config).await
 }
 
@@ -521,7 +521,8 @@ pub async fn open_start_positions(
             client.post_order(signed_order),
         )
         .await?;
-        if response[0].order_id != "" {
+        println!("open_first_start_positions response: {:?}", response);
+        if response[0].order_id.len() != 0 {
             return Ok(Some(OrderResponse {
                 token_id: tokens.first_asset_id,
                 order_id: response[0].order_id.clone(),
@@ -550,7 +551,8 @@ pub async fn open_start_positions(
             client.post_order(signed_order),
         )
         .await?;
-        if response[0].order_id == "" {
+        println!("open_second_start_positions response: {:?}", response);
+        if response[0].order_id.len() != 0 {
             Ok(Some(OrderResponse {
                 token_id: tokens.second_asset_id,
                 order_id: response[0].order_id.clone(),

@@ -127,7 +127,7 @@ async fn main() -> anyhow::Result<()> {
             .await
             {
                 Ok(Some(order)) => {
-                    println!("Opened position: {:?}", order);
+                    println!("Opened order: {:?}", order);
                     sleep(Duration::from_secs(8)).await;
                     loop {
                         sleep(Duration::from_secs(1)).await;
