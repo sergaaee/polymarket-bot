@@ -93,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
     let ok = client.ok().await?;
     println!("Client setup ok?: {ok}");
     let mut win_count: u32 = 0;
-    let mut loss_count: u32 = 0;
+    let mut retries_count: u32 = 0;
     let mut completed_timestamps: Vec<i64> = Vec::new();
 
     loop {
@@ -120,48 +120,62 @@ async fn main() -> anyhow::Result<()> {
                 .await?
                 .price;
             if first_token_price >= Decimal::from_str_exact("0.95").unwrap() {
-                match open_position_by_market(&client, &signer, &tokens.first_asset_id, order_size)
+                while retries_count < 100 {
+                    match open_position_by_market(
+                        &client,
+                        &signer,
+                        &tokens.first_asset_id,
+                        order_size,
+                    )
                     .await
-                {
-                    Ok(position) => {
-                        println!("Opened position: {:?}", position);
-                        win_count += 1;
-                    }
-                    Err(err) => {
-                        println!("Failed to open position: {}", err);
-                        sleep(Duration::from_secs(1)).await;
+                    {
+                        Ok(position) => {
+                            println!("Opened position: {:?}", position);
+                            win_count += 1;
+                            completed_timestamps.push(timestamp);
+                            retries_count = 0;
+                            break;
+                        }
+                        Err(err) => {
+                            retries_count += 1;
+                            println!("Failed to open position {retries_count}/100: {}", err);
+                            sleep(Duration::from_secs(1)).await;
+                        }
                     }
                 }
-                completed_timestamps.push(timestamp);
                 break;
             }
             let second_token_price = get_asset_price(&client, &tokens.second_asset_id)
                 .await?
                 .price;
             if second_token_price >= Decimal::from_str_exact("0.95").unwrap() {
-                match open_position_by_market(&client, &signer, &tokens.second_asset_id, order_size)
+                while retries_count < 100 {
+                    match open_position_by_market(
+                        &client,
+                        &signer,
+                        &tokens.second_asset_id,
+                        order_size,
+                    )
                     .await
-                {
-                    Ok(position) => {
-                        println!("Opened position: {:?}", position);
-                        win_count += 1;
-                    }
-                    Err(err) => {
-                        println!("Failed to open position: {}", err);
-                        sleep(Duration::from_secs(1)).await;
+                    {
+                        Ok(position) => {
+                            println!("Opened position: {:?}", position);
+                            win_count += 1;
+                            completed_timestamps.push(timestamp);
+                            retries_count = 0;
+                            break;
+                        }
+                        Err(err) => {
+                            retries_count += 1;
+                            println!("Failed to open position {retries_count}/100: {}", err);
+                            sleep(Duration::from_secs(1)).await;
+                        }
                     }
                 }
-                completed_timestamps.push(timestamp);
                 break;
             }
             sleep(Duration::from_secs(1)).await;
         }
-
-        println!(
-            "win count: {}, loss count: {} | {}",
-            win_count,
-            loss_count,
-            Asset::BTC
-        );
+        println!("win count: {} | {}", win_count, Asset::BTC);
     }
 }
