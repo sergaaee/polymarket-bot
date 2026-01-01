@@ -94,20 +94,75 @@ async fn main() -> anyhow::Result<()> {
     println!("Client setup ok?: {ok}");
     let mut win_count: u32 = 0;
     let mut loss_count: u32 = 0;
-    let mut completed_timesteps: Vec<i64> = vec![];
 
     loop {
         let timestamp = current_quarter_hour();
-        if completed_timesteps.contains(&timestamp) {
-            println!("Already completed timestamp: {}", timestamp);
+
+        if !allow_trade(timestamp, &800) {
             sleep(Duration::from_secs(1)).await;
             continue;
         }
+
         let tokens = get_tokens(&http_client, &timestamp, Asset::ETH)
             .await
             .expect(
                 "Failed to get tokens from API. Please check your network connection and try again later.",
             );
+
+        loop {
+            let first_token_price = get_asset_price(&client, &tokens.first_asset_id)
+                .await?
+                .price;
+            if first_token_price >= Decimal::from_str_exact("0.95").unwrap() {
+                loop {
+                    match open_position_by_market(
+                        &client,
+                        &signer,
+                        &tokens.first_asset_id,
+                        order_size,
+                    )
+                        .await
+                    {
+                        Ok(position) => {
+                            println!("Opened position: {:?}", position);
+                            win_count += 1;
+                        }
+                        Err(err) => {
+                            println!("Failed to open position: {}", err);
+                            sleep(Duration::from_secs(1)).await;
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+            let second_token_price = get_asset_price(&client, &tokens.second_asset_id)
+                .await?
+                .price;
+            if second_token_price >= Decimal::from_str_exact("0.95").unwrap() {
+                loop {
+                    match open_position_by_market(
+                        &client,
+                        &signer,
+                        &tokens.second_asset_id,
+                        order_size,
+                    )
+                        .await
+                    {
+                        Ok(position) => {
+                            println!("Opened position: {:?}", position);
+                            win_count += 1;
+                        }
+                        Err(err) => {
+                            println!("Failed to open position: {}", err);
+                            sleep(Duration::from_secs(1)).await;
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+        }
 
         println!(
             "win count: {}, loss count: {} | {}",
@@ -115,76 +170,5 @@ async fn main() -> anyhow::Result<()> {
             loss_count,
             Asset::ETH
         );
-        let mut hedge_asset_id;
-        let mut initial_asset_id;
-
-        'open_position: loop {
-            match open_start_positions(
-                &client,
-                &signer,
-                order_size,
-                limit_enter_price,
-                tokens.clone(),
-            )
-                .await
-            {
-                Ok(Some(order)) => {
-                    println!("Opened order: {:?}", order);
-                    sleep(Duration::from_secs(8)).await;
-                    loop {
-                        sleep(Duration::from_secs(1)).await;
-                        let order_id = order.order_id.clone();
-                        let first_order =
-                            get_order_with_retry(&client, &order_id.as_str(), 20, &Asset::ETH)
-                                .await?;
-                        if order.token_id == tokens.first_asset_id.clone() {
-                            initial_asset_id = tokens.first_asset_id.clone();
-                            hedge_asset_id = tokens.second_asset_id.clone();
-                        } else {
-                            initial_asset_id = tokens.second_asset_id.clone();
-                            hedge_asset_id = tokens.first_asset_id.clone();
-                        }
-
-                        // if left lest than grace_seconds till market open we don't want to wait anymore to open positions
-
-                        if first_order.status == OrderStatusType::Matched {
-                            println!("First order matched: {:?}", first_order);
-                            let close_size = normalized_size(first_order.size_matched, order_size);
-                            let result = handle_matched(
-                                &client,
-                                &signer,
-                                HedgeConfig {
-                                    stop_loss_after,
-                                    hedge_asset_id,
-                                    initial_asset_id,
-                                    hedge_size: order_size,
-                                    close_size,
-                                    hedge_enter_price,
-                                    timestamp,
-                                    asset: Asset::ETH,
-                                },
-                            )
-                                .await?;
-
-                            match result.signum() {
-                                1 => win_count += 1,
-                                -1 => loss_count += 1,
-                                _ => {}
-                            }
-                            completed_timesteps.push(timestamp.clone());
-                            break;
-                        }
-                    }
-                    break 'open_position;
-                }
-                Ok(None) => {
-                    // retry
-                }
-                Err(e) => {
-                    eprintln!("Error opening positions: {e}");
-                }
-            }
-            sleep(Duration::from_secs(1)).await;
-        }
     }
 }

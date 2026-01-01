@@ -378,7 +378,8 @@ pub fn allow_trade(market_timestamp: i64, grace_seconds: &i64) -> bool {
         .expect("time went backwards")
         .as_secs() as i64;
 
-    now <= market_timestamp - grace_seconds
+    // Разрешаем торговлю только после market_timestamp + 800 секунд
+    now >= market_timestamp + grace_seconds
 }
 
 pub fn current_quarter_hour() -> i64 {
@@ -453,6 +454,32 @@ pub async fn close_position_by_market(
         client.post_order(signed_order),
     )
     .await?;
+
+    Ok(result[0].clone())
+}
+
+pub async fn open_position_by_market(
+    client: &Arc<Client<Authenticated<Normal>>>,
+    signer: &LocalSigner<SigningKey>,
+    token_id: &String,
+    amount: Decimal,
+) -> polymarket_client_sdk::Result<PostOrderResponse> {
+    let market_order = client
+        .market_order()
+        .token_id(token_id)
+        .amount(Amount::shares(amount)?)
+        .side(Side::Buy)
+        .order_type(OrderType::FAK)
+        .build()
+        .await?;
+    let signed_order = client.sign(signer, market_order).await?;
+    println!("opening position by market order",);
+    let result = timed_request(
+        "polymarket",
+        "close_position_by_market",
+        client.post_order(signed_order),
+    )
+        .await?;
 
     Ok(result[0].clone())
 }
