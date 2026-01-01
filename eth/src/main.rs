@@ -112,12 +112,13 @@ async fn main() -> anyhow::Result<()> {
 
         loop {
             println!(
-                "Waiting for {} price to up above 0.95... (sleeping for 1 second)",
+                "Waiting for {} price to up above 0.9... (sleeping for 1 second)",
                 Asset::ETH
             );
             let first_token_price = get_asset_price(&client, &tokens.first_asset_id)
                 .await?
                 .price;
+            println!("{} price: {}", Asset::ETH, first_token_price);
             if first_token_price >= Decimal::from_str_exact("0.9").unwrap() {
                 while retries_count < 30 {
                     match open_position_by_market(
@@ -147,6 +148,7 @@ async fn main() -> anyhow::Result<()> {
             let second_token_price = get_asset_price(&client, &tokens.second_asset_id)
                 .await?
                 .price;
+            println!("{} price: {}", Asset::ETH, second_token_price);
             if second_token_price >= Decimal::from_str_exact("0.9").unwrap() {
                 while retries_count < 30 {
                     match open_position_by_market(
