@@ -99,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
         let timestamp = current_quarter_hour();
 
         if !allow_trade(timestamp, &800) {
-            println!("Not yet. Sleeping for 1 second.");
+            println!("Not yet. Sleeping for 1 second, current timestamp: {}", &timestamp);
             sleep(Duration::from_secs(1)).await;
             continue;
         }
@@ -120,6 +120,7 @@ async fn main() -> anyhow::Result<()> {
                 .price;
             println!("{} price: {}", Asset::XRP, first_token_price);
             if first_token_price >= Decimal::from_str_exact("0.9").unwrap() {
+                println!("{} price is above 0.9. Opening position...", Asset::XRP);
                 while retries_count < 30 {
                     match open_position_by_market(
                         &client,
@@ -138,7 +139,7 @@ async fn main() -> anyhow::Result<()> {
                         }
                         Err(err) => {
                             retries_count += 1;
-                            println!("Failed to open position {retries_count}/100: {}", err);
+                            println!("Failed to open position {retries_count}/30: {}", err);
                             sleep(Duration::from_secs(1)).await;
                         }
                     }
@@ -150,6 +151,7 @@ async fn main() -> anyhow::Result<()> {
                 .price;
             println!("{} price: {}", Asset::XRP, second_token_price);
             if second_token_price >= Decimal::from_str_exact("0.9").unwrap() {
+                println!("{} price is above 0.9. Opening position...", Asset::XRP);
                 while retries_count < 30 {
                     match open_position_by_market(
                         &client,
@@ -168,7 +170,7 @@ async fn main() -> anyhow::Result<()> {
                         }
                         Err(err) => {
                             retries_count += 1;
-                            println!("Failed to open position {retries_count}/100: {}", err);
+                            println!("Failed to open position {retries_count}/30: {}", err);
                             sleep(Duration::from_secs(1)).await;
                         }
                     }
