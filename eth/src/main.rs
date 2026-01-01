@@ -94,11 +94,12 @@ async fn main() -> anyhow::Result<()> {
     println!("Client setup ok?: {ok}");
     let mut win_count: u32 = 0;
     let mut loss_count: u32 = 0;
+    let mut completed_timestamps: Vec<i64> = Vec::new();
 
     loop {
         let timestamp = current_quarter_hour();
 
-        if !allow_trade(timestamp, &800) {
+        if !allow_trade(timestamp, &800) || completed_timestamps.contains(&timestamp) {
             println!("Not yet. Sleeping for 1 second.");
             sleep(Duration::from_secs(1)).await;
             continue;
@@ -111,58 +112,49 @@ async fn main() -> anyhow::Result<()> {
             );
 
         loop {
+            println!(
+                "Waiting for {} price to up above 0.95... (sleeping for 1 second)",
+                Asset::ETH
+            );
             let first_token_price = get_asset_price(&client, &tokens.first_asset_id)
                 .await?
                 .price;
             if first_token_price >= Decimal::from_str_exact("0.95").unwrap() {
-                loop {
-                    match open_position_by_market(
-                        &client,
-                        &signer,
-                        &tokens.first_asset_id,
-                        order_size,
-                    )
-                        .await
-                    {
-                        Ok(position) => {
-                            println!("Opened position: {:?}", position);
-                            win_count += 1;
-                        }
-                        Err(err) => {
-                            println!("Failed to open position: {}", err);
-                            sleep(Duration::from_secs(1)).await;
-                            break;
-                        }
+                match open_position_by_market(&client, &signer, &tokens.first_asset_id, order_size)
+                    .await
+                {
+                    Ok(position) => {
+                        println!("Opened position: {:?}", position);
+                        win_count += 1;
+                    }
+                    Err(err) => {
+                        println!("Failed to open position: {}", err);
+                        sleep(Duration::from_secs(1)).await;
                     }
                 }
+                completed_timestamps.push(timestamp);
                 break;
             }
             let second_token_price = get_asset_price(&client, &tokens.second_asset_id)
                 .await?
                 .price;
             if second_token_price >= Decimal::from_str_exact("0.95").unwrap() {
-                loop {
-                    match open_position_by_market(
-                        &client,
-                        &signer,
-                        &tokens.second_asset_id,
-                        order_size,
-                    )
-                        .await
-                    {
-                        Ok(position) => {
-                            println!("Opened position: {:?}", position);
-                            win_count += 1;
-                        }
-                        Err(err) => {
-                            println!("Failed to open position: {}", err);
-                            sleep(Duration::from_secs(1)).await;
-                            break;
-                        }
+                match open_position_by_market(&client, &signer, &tokens.second_asset_id, order_size)
+                    .await
+                {
+                    Ok(position) => {
+                        println!("Opened position: {:?}", position);
+                        win_count += 1;
+                    }
+                    Err(err) => {
+                        println!("Failed to open position: {}", err);
+                        sleep(Duration::from_secs(1)).await;
                     }
                 }
+                completed_timestamps.push(timestamp);
                 break;
             }
+            sleep(Duration::from_secs(1)).await;
         }
 
         println!(
