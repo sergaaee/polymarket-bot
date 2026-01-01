@@ -94,12 +94,11 @@ async fn main() -> anyhow::Result<()> {
     println!("Client setup ok?: {ok}");
     let mut win_count: u32 = 0;
     let mut retries_count: u32 = 0;
-    let mut completed_timestamps: Vec<i64> = Vec::new();
 
     loop {
         let timestamp = current_quarter_hour();
 
-        if !allow_trade(timestamp, &800) || completed_timestamps.contains(&timestamp) {
+        if !allow_trade(timestamp, &800) {
             println!("Not yet. Sleeping for 1 second.");
             sleep(Duration::from_secs(1)).await;
             continue;
@@ -119,8 +118,8 @@ async fn main() -> anyhow::Result<()> {
             let first_token_price = get_asset_price(&client, &tokens.first_asset_id)
                 .await?
                 .price;
-            if first_token_price >= Decimal::from_str_exact("0.95").unwrap() {
-                while retries_count < 100 {
+            if first_token_price >= Decimal::from_str_exact("0.9").unwrap() {
+                while retries_count < 30 {
                     match open_position_by_market(
                         &client,
                         &signer,
@@ -132,7 +131,6 @@ async fn main() -> anyhow::Result<()> {
                         Ok(position) => {
                             println!("Opened position: {:?}", position);
                             win_count += 1;
-                            completed_timestamps.push(timestamp);
                             retries_count = 0;
                             break;
                         }
@@ -148,8 +146,8 @@ async fn main() -> anyhow::Result<()> {
             let second_token_price = get_asset_price(&client, &tokens.second_asset_id)
                 .await?
                 .price;
-            if second_token_price >= Decimal::from_str_exact("0.95").unwrap() {
-                while retries_count < 100 {
+            if second_token_price >= Decimal::from_str_exact("0.9").unwrap() {
+                while retries_count < 30 {
                     match open_position_by_market(
                         &client,
                         &signer,
@@ -161,7 +159,6 @@ async fn main() -> anyhow::Result<()> {
                         Ok(position) => {
                             println!("Opened position: {:?}", position);
                             win_count += 1;
-                            completed_timestamps.push(timestamp);
                             retries_count = 0;
                             break;
                         }
