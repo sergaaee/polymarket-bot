@@ -93,12 +93,11 @@ async fn main() -> anyhow::Result<()> {
     let ok = client.ok().await?;
     println!("Client setup ok?: {ok}");
     let mut win_count: u32 = 0;
-    let mut retries_count: u32 = 0;
 
     loop {
         let timestamp = current_quarter_hour();
 
-        if !allow_trade(timestamp, &90) {
+        if !allow_trade(timestamp, &800) {
             println!(
                 "Not yet. Sleeping for 1 second, current timestamp: {}",
                 &timestamp
@@ -112,19 +111,20 @@ async fn main() -> anyhow::Result<()> {
             .expect(
                 "Failed to get tokens from API. Please check your network connection and try again later.",
             );
+        let mut retries_count: u32 = 0;
 
         loop {
             println!(
-                "Waiting for {} price to up above 0.85... (sleeping for 1 second)",
+                "Waiting for {} price to up above 0.9... (sleeping for 1 second)",
                 Asset::SOL
             );
             let first_token_price = get_asset_price(&client, &tokens.first_asset_id)
                 .await?
                 .price;
             println!("{} price: {}", Asset::SOL, first_token_price);
-            if first_token_price >= Decimal::from_str_exact("0.85").unwrap() {
-                println!("{} price is above 0.85. Opening position...", Asset::SOL);
-                while retries_count < 30 {
+            if first_token_price >= Decimal::from_str_exact("0.9").unwrap() {
+                println!("{} price is above 0.9. Opening position...", Asset::SOL);
+                loop {
                     match open_position_by_market(
                         &client,
                         &signer,
@@ -135,23 +135,18 @@ async fn main() -> anyhow::Result<()> {
                     {
                         Ok(position) => {
                             println!("Opened position: {:?}", position);
+                            win_count += 1;
                             retries_count = 0;
-                            let hedge_order = place_hedge_order(
-                                &client,
-                                &signer,
-                                tokens.second_asset_id,
-                                position.taking_amount,
-                                Decimal::from_str_exact("0.05").unwrap(),
-                                &Asset::SOL,
-                            )
-                                .await?;
-                            println!("Hedge order placed: {:?}", hedge_order);
                             sleep(Duration::from_secs(3)).await;
                             break;
                         }
                         Err(err) => {
                             retries_count += 1;
                             println!("Failed to open position {retries_count}/30: {}", err);
+                            if retries_count == 30 {
+                                println!("Retries limit reached. Exiting...");
+                                break;
+                            }
                             sleep(Duration::from_secs(1)).await;
                         }
                     }
@@ -162,9 +157,9 @@ async fn main() -> anyhow::Result<()> {
                 .await?
                 .price;
             println!("{} price: {}", Asset::SOL, second_token_price);
-            if second_token_price >= Decimal::from_str_exact("0.85").unwrap() {
-                println!("{} price is above 0.85. Opening position...", Asset::SOL);
-                while retries_count < 30 {
+            if second_token_price >= Decimal::from_str_exact("0.9").unwrap() {
+                println!("{} price is above 0.9. Opening position...", Asset::SOL);
+                loop {
                     match open_position_by_market(
                         &client,
                         &signer,
@@ -177,22 +172,16 @@ async fn main() -> anyhow::Result<()> {
                             println!("Opened position: {:?}", position);
                             win_count += 1;
                             retries_count = 0;
-                            let hedge_order = place_hedge_order(
-                                &client,
-                                &signer,
-                                tokens.first_asset_id,
-                                position.taking_amount,
-                                Decimal::from_str_exact("0.05").unwrap(),
-                                &Asset::SOL,
-                            )
-                                .await?;
-                            println!("Hedge order placed: {:?}", hedge_order);
                             sleep(Duration::from_secs(3)).await;
                             break;
                         }
                         Err(err) => {
                             retries_count += 1;
                             println!("Failed to open position {retries_count}/30: {}", err);
+                            if retries_count == 30 {
+                                println!("Retries limit reached. Exiting...");
+                                break;
+                            }
                             sleep(Duration::from_secs(1)).await;
                         }
                     }
