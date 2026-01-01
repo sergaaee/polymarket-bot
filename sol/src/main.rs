@@ -132,6 +132,7 @@ async fn main() -> anyhow::Result<()> {
                             println!("Opened position: {:?}", position);
                             win_count += 1;
                             retries_count = 0;
+                            sleep(Duration::from_secs(3)).await;
                             break;
                         }
                         Err(err) => {
@@ -160,6 +161,7 @@ async fn main() -> anyhow::Result<()> {
                             println!("Opened position: {:?}", position);
                             win_count += 1;
                             retries_count = 0;
+                            sleep(Duration::from_secs(3)).await;
                             break;
                         }
                         Err(err) => {
