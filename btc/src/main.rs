@@ -99,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
         let timestamp = current_quarter_hour();
 
         if !allow_trade(timestamp, &800) {
+            println!("Not yet. Sleeping for 1 second.");
             sleep(Duration::from_secs(1)).await;
             continue;
         }
