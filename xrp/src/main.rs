@@ -60,24 +60,16 @@ async fn main() -> anyhow::Result<()> {
     let order_size = std::env::var("ORDER_SIZE").expect("Need an order size");
     let order_size = Decimal::from_str_exact(order_size.as_str())
         .expect("Order size must be a valid decimal number");
-    let limit_enter_price = std::env::var("LIMIT_ENTER_PRICE").expect("Need a limit enter price");
-    let limit_enter_price = Decimal::from_str_exact(limit_enter_price.as_str())
+    let enter_price = std::env::var("ENTER_PRICE").expect("Need enter price");
+    let enter_price = Decimal::from_str_exact(enter_price.as_str())
         .expect("Limit enter price must be a valid decimal number");
-    let hedge_enter_price = std::env::var("HEDGE_ENTER_PRICE").expect("Need a hedge enter price");
-    let hedge_enter_price = Decimal::from_str_exact(hedge_enter_price.as_str())
+    let stop_price = std::env::var("STOP_PRICE").expect("Need a stop price");
+    let stop_price = Decimal::from_str_exact(stop_price.as_str())
         .expect("Hedge enter price must be a valid decimal number");
     let dont_allow_trade_before = std::env::var("DONT_ALLOW_TRADE_BEFORE")
         .expect("Need a time to stop trading")
         .parse::<i64>()
         .expect("DONT_ALLOW_TRADE_BEFORE must be i64");
-    let dont_allow_holding_before = std::env::var("DONT_ALLOW_HOLDING_BEFORE")
-        .expect("Need a time to stop holding")
-        .parse::<i64>()
-        .expect("DONT_ALLOW_HOLDING_BEFORE must be i64");
-    let stop_loss_after = std::env::var("STOP_LOSS_AFTER")
-        .expect("Need a stop loss after")
-        .parse::<i64>()
-        .expect("STOP_LOSS_AFTER must be i64");
     let address = Address::parse_checksummed(funder_addr, None).expect("valid checksum");
     let http_client = http_client::new();
     let signer = LocalSigner::from_str(&private_key)?.with_chain_id(Some(POLYGON));
@@ -97,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         let timestamp = current_quarter_hour();
 
-        if !allow_trade(timestamp, &800) {
+        if !allow_trade(timestamp, &dont_allow_trade_before) {
             println!(
                 "Not yet. Sleeping for 1 second, current timestamp: {}",
                 &timestamp
@@ -122,7 +114,7 @@ async fn main() -> anyhow::Result<()> {
                 .await?
                 .price;
             println!("{} price: {}", Asset::XRP, first_token_price);
-            if first_token_price >= Decimal::from_str_exact("0.9").unwrap() {
+            if first_token_price >= enter_price {
                 println!("{} price is above 0.9. Opening position...", Asset::XRP);
                 loop {
                     match open_position_by_market(
@@ -137,7 +129,28 @@ async fn main() -> anyhow::Result<()> {
                             println!("Opened position: {:?}", position);
                             win_count += 1;
                             retries_count = 0;
-                            sleep(Duration::from_secs(3)).await;
+                            loop {
+                                let first_token_price =
+                                    get_asset_price(&client, &tokens.first_asset_id)
+                                        .await?
+                                        .price;
+                                if first_token_price < stop_price {
+                                    close_position_by_market(
+                                        &client,
+                                        &signer,
+                                        &tokens.first_asset_id,
+                                        position.taking_amount,
+                                    )
+                                        .await?;
+                                    println!("Closed position: {:?}", position);
+                                    break;
+                                }
+                                if current_quarter_hour() != timestamp {
+                                    break;
+                                }
+                                println!("All fine, SL not reached, sleeping for 1 second");
+                                sleep(Duration::from_secs(1)).await;
+                            }
                             break;
                         }
                         Err(err) => {
@@ -157,7 +170,7 @@ async fn main() -> anyhow::Result<()> {
                 .await?
                 .price;
             println!("{} price: {}", Asset::XRP, second_token_price);
-            if second_token_price >= Decimal::from_str_exact("0.9").unwrap() {
+            if second_token_price >= enter_price {
                 println!("{} price is above 0.9. Opening position...", Asset::XRP);
                 loop {
                     match open_position_by_market(
@@ -172,7 +185,28 @@ async fn main() -> anyhow::Result<()> {
                             println!("Opened position: {:?}", position);
                             win_count += 1;
                             retries_count = 0;
-                            sleep(Duration::from_secs(3)).await;
+                            loop {
+                                let second_token_price =
+                                    get_asset_price(&client, &tokens.second_asset_id)
+                                        .await?
+                                        .price;
+                                if second_token_price < stop_price {
+                                    close_position_by_market(
+                                        &client,
+                                        &signer,
+                                        &tokens.second_asset_id,
+                                        position.taking_amount,
+                                    )
+                                        .await?;
+                                    println!("Closed position: {:?}", position);
+                                    break;
+                                }
+                                if current_quarter_hour() != timestamp {
+                                    break;
+                                }
+                                println!("All fine, SL not reached, sleeping for 1 second");
+                                sleep(Duration::from_secs(1)).await;
+                            }
                             break;
                         }
                         Err(err) => {
